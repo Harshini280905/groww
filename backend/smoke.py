@@ -21,6 +21,7 @@ modes show up as designed.
 from __future__ import annotations
 
 import asyncio
+import os
 
 from app.market_data import Reconciler
 from app.sources.bse import BSESource
@@ -36,10 +37,16 @@ TIER_BADGE = {
 
 
 async def main():
+    # Mirrors pipeline.get_reconciler(): NSE is opt-in via ENABLE_NSE=1
+    # because it 403s from datacenter IPs. Run `ENABLE_NSE=1 python smoke.py`
+    # from a residential connection to exercise all three.
+    enable_nse = os.getenv("ENABLE_NSE", "0") == "1"
     yahoo = YahooSource()
-    nse = NSEDirectSource()
     bse = BSESource()
-    reconciler = Reconciler([yahoo, nse, bse])
+    nse = NSEDirectSource() if enable_nse else None
+    sources = [yahoo, bse] if nse is None else [yahoo, nse, bse]
+    print(f"sources: {', '.join(s.name for s in sources)}")
+    reconciler = Reconciler(sources)
 
     try:
         for symbol in ["RELIANCE", "TCS", "INFY"]:
@@ -54,7 +61,8 @@ async def main():
             print(f"  -> resolved Rs {quote.price:,.2f}  |  confidence {quote.confidence:.2f}  |  {tier}")
             print(f"     coverage={quote.coverage:.2f}  agreement={quote.agreement:.2f}  freshness={quote.freshness:.2f}")
     finally:
-        await nse.close()
+        if nse is not None:
+            await nse.close()
         await bse.close()
 
 

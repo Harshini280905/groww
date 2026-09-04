@@ -12,6 +12,7 @@ not user count, regardless of which caller triggers a poll.
 
 from __future__ import annotations
 
+import os
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -29,6 +30,10 @@ from .sources.yahoo import YahooSource
 # One long-lived reconciler for the process — keeps warmed sessions +
 # circuit-breakers alive across requests/poll-cycles. Real production would
 # inject via FastAPI dependencies, but a module-level singleton is fine here.
+# NSE blocks datacenter IPs (403 from any cloud host). Off unless explicitly
+# enabled — see get_reconciler() for the full rationale.
+ENABLE_NSE = os.getenv("ENABLE_NSE", "0") == "1"
+
 _yahoo: Optional[YahooSource] = None
 _nse: Optional[NSEDirectSource] = None
 _bse: Optional[BSESource] = None
@@ -36,15 +41,31 @@ _reconciler: Optional[Reconciler] = None
 
 
 def get_reconciler() -> Reconciler:
+    """Build the source set once per process.
+
+    NSE is DISABLED BY DEFAULT (`ENABLE_NSE=1` to turn it on). Their bot
+    detection blocks datacenter IPs outright — from Render, or any cloud
+    host, every request returns 403. Shipping a source that always fails
+    is worse than not shipping it: it drags `coverage` down (2/3 instead of
+    2/2), so every quote scores lower for a reason the user can do nothing
+    about, and it fills the per-source drill-down with noise.
+
+    The adapter and its tests stay in the tree — the work is real and it
+    runs fine from a residential IP or behind a proxy. This is a deployment
+    switch, not a deletion.
+    """
     global _yahoo, _nse, _bse, _reconciler
     if _reconciler is None:
         _yahoo = YahooSource()
-        _nse = NSEDirectSource()
         _bse = BSESource()
-        # Three genuinely-independent sources: Yahoo (US aggregator),
-        # NSE direct (India's larger exchange), BSE direct (India's older,
-        # separate exchange). Any two agreeing constitutes cross-verification.
-        _reconciler = Reconciler([_yahoo, _nse, _bse])
+        # Yahoo (US aggregator) + BSE (India's older exchange, separate
+        # infrastructure from NSE) are genuinely independent — both must
+        # agree for a quote to reach VERIFIED.
+        sources = [_yahoo, _bse]
+        if ENABLE_NSE:
+            _nse = NSEDirectSource()
+            sources.insert(1, _nse)
+        _reconciler = Reconciler(sources)
     return _reconciler
 
 

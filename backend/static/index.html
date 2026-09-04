@@ -396,22 +396,42 @@ const setStatus = (msg, cls = "") => {
 const TOKEN_KEY = "wl_token";
 const EMAIL_KEY = "wl_email";
 
-function getToken() { return localStorage.getItem(TOKEN_KEY); }
+// localStorage is NOT always available: private browsing, blocked site
+// data, and some embedded contexts make the accessor itself THROW rather
+// than return null. Unguarded access killed the whole app (blank page,
+// "not signed in", no way to recover). Every access is wrapped, with an
+// in-memory fallback so the session still works for the current tab —
+// it just won't survive a reload. Degraded, not dead.
+const _memStore = {};
+function storeGet(k) {
+  try { return localStorage.getItem(k); }
+  catch { return _memStore[k] ?? null; }
+}
+function storeSet(k, v) {
+  try { localStorage.setItem(k, v); }
+  catch { _memStore[k] = v; }
+}
+function storeDel(k) {
+  try { localStorage.removeItem(k); }
+  catch { delete _memStore[k]; }
+}
+
+function getToken() { return storeGet(TOKEN_KEY); }
 function setSession(token, email) {
-  localStorage.setItem(TOKEN_KEY, token);
-  localStorage.setItem(EMAIL_KEY, email);
+  storeSet(TOKEN_KEY, token);
+  storeSet(EMAIL_KEY, email);
   $("#who-email").textContent = email;
   $("#btn-logout").hidden = false;
 }
 function clearSession() {
-  localStorage.removeItem(TOKEN_KEY);
-  localStorage.removeItem(EMAIL_KEY);
+  storeDel(TOKEN_KEY);
+  storeDel(EMAIL_KEY);
 }
 
 async function ensureSession() {
   const existing = getToken();
   if (existing) {
-    $("#who-email").textContent = localStorage.getItem(EMAIL_KEY) || "signed in";
+    $("#who-email").textContent = storeGet(EMAIL_KEY) || "signed in";
     $("#btn-logout").hidden = false;
     return existing;
   }
@@ -585,9 +605,16 @@ function renderDiff(item) {
   return wrap;
 }
 
-async function renderReadingsDrilldown(symbol) {
+async function renderReadingsDrilldown(symbol, item) {
   const wrap = el("details", { className: "drill" });
-  wrap.append(el("summary", {}, "why this tier? — per-source readings"));
+  // Framed as a trust signal, not a debug dump. A user cares "how many
+  // independent sources agreed on this price" — not "per-source readings".
+  // The evidence underneath is identical; only the framing changed.
+  const okCount = item && item.tier === "verified" ? 2 : null;
+  const label = okCount
+    ? `price confirmed by ${okCount} independent sources`
+    : "how was this price confirmed?";
+  wrap.append(el("summary", {}, label));
   wrap.append(el("div", { textContent: "loading..." }));
   wrap.addEventListener("toggle", async () => {
     if (!wrap.open || wrap.dataset.loaded) return;
@@ -640,7 +667,7 @@ async function renderCard(item) {
 
   card.append(renderDiff(item));
 
-  card.append(await renderReadingsDrilldown(item.symbol));
+  card.append(await renderReadingsDrilldown(item.symbol, item));
 
   const actions = el("div", { className: "card-actions" });
   const pollBtn = el("button", { className: "btn secondary tiny" }, "Poll now");

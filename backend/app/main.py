@@ -28,7 +28,7 @@ from .auth import decode_user_id
 from .db import Base, engine
 from .narrator import resolve_provider
 from .notifications import manager
-from .pipeline import shutdown_reconciler
+from .pipeline import get_reconciler, shutdown_reconciler
 from .routers import auth, stocks, watchlist
 from .routers.dev import router as dev_router
 from .scheduler import start_scheduler, stop_scheduler
@@ -86,6 +86,8 @@ def health() -> dict:
         # operator guess whether their key was picked up. "none" means the
         # narrate endpoint will cite real news but skip LLM synthesis.
         "narrator_provider": resolve_provider(),
+        # Which price sources are actually live in this deployment.
+        "sources": [s.name for s in get_reconciler().sources],
     }
 
 
