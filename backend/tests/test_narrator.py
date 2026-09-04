@@ -156,5 +156,49 @@ class NarrateGuards(unittest.TestCase):
         self.assertIn("Never give investment advice", narrator.NARRATOR_SYSTEM_PROMPT)
 
 
+class CitationIntegrity(unittest.TestCase):
+    """Regression guard for a real bug found in live testing.
+
+    The prompt was built from 5 headlines but the response only returned
+    news[:3]. When the model legitimately cited headline #4, it looked to
+    the reader like a fabricated source with no way to verify it — silently
+    breaking the "always cited" guarantee this whole module exists to make.
+    Every headline the model can see MUST come back in `sources`.
+    """
+
+    _FIVE = [
+        NewsItem(title=f"Headline {i}", publisher="P", link=f"http://x/{i}")
+        for i in range(5)
+    ]
+
+    @patch.object(narrator, "NARRATOR_PROVIDER", "groq")
+    @patch.object(narrator, "GROQ_API_KEY", "gsk_fake")
+    @patch.object(narrator, "fetch_recent_news")
+    @patch.object(narrator, "_synthesize_openai_compatible")
+    def test_every_prompted_headline_is_returned_as_a_source(self, mock_synth, mock_fetch):
+        mock_fetch.return_value = self._FIVE
+        mock_synth.return_value = "Some explanation."
+
+        result = narrator.narrate_event("TCS", "up", 5.0, 3.0, 0.9, "verified")
+
+        prompted = narrator._build_user_prompt(
+            "TCS", "up", 5.0, 3.0, "verified", self._FIVE
+        )
+        # Anything the model was shown must be verifiable by the reader.
+        for item in self._FIVE:
+            self.assertIn(item.title, prompted)
+            self.assertIn(
+                item.title, [s.title for s in result.sources],
+                msg=f"{item.title!r} was in the prompt but not returned as a source",
+            )
+
+    @patch.object(narrator, "NARRATOR_PROVIDER", "none")
+    @patch.object(narrator, "fetch_recent_news")
+    def test_fallback_also_returns_the_full_source_set(self, mock_fetch):
+        mock_fetch.return_value = self._FIVE
+        result = narrator.narrate_event("TCS", "up", 5.0, 3.0, 0.9, "verified")
+        self.assertEqual(len(result.sources), 5)
+
+
 if __name__ == "__main__":
     unittest.main()

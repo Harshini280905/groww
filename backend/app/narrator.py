@@ -153,7 +153,10 @@ def _headline_fallback(news: list[NewsItem], reason: str = "no LLM provider conf
             f"explanation ({reason})."
         ),
         generated_by="headline-fallback",
-        sources=news[:3],
+        # Return the FULL list, not a slice — see the note in narrate_event:
+        # the caller must be able to verify every headline the narration
+        # could possibly reference.
+        sources=news,
     )
 
 
@@ -191,7 +194,7 @@ def _synthesize_openai_compatible(
         },
         json={
             "model": model,
-            "max_tokens": 260,
+            "max_tokens": 700,
             "temperature": 0.3,      # low — this is factual summarisation
             "messages": [
                 {"role": "system", "content": system_prompt},
@@ -211,7 +214,7 @@ def _synthesize_anthropic(model: str, system_prompt: str, user_prompt: str) -> s
     client = anthropic.Anthropic(api_key=ANTHROPIC_API_KEY)
     resp = client.messages.create(
         model=model,
-        max_tokens=260,
+        max_tokens=700,
         system=system_prompt,
         messages=[{"role": "user", "content": user_prompt}],
     )
@@ -287,7 +290,14 @@ def narrate_event(
         text = (text or "").strip()
         if not text:
             raise ValueError("empty response from model")
-        return Narration(text=text, generated_by=tag, sources=news[:3], model=model_used)
+
+        # CITATION INTEGRITY: return exactly the headline set the model was
+        # shown — never a subset. Returning news[:3] while prompting with 5
+        # meant a legitimate citation of headline #4 looked to the user like
+        # a fabrication, with no way to verify it. The whole "always cited"
+        # guarantee depends on the reader being able to check every source
+        # the narration could possibly reference.
+        return Narration(text=text, generated_by=tag, sources=news, model=model_used)
 
     except Exception as e:
         fallback = _headline_fallback(news, reason=f"{provider} call failed")
