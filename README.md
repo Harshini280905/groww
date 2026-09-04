@@ -1,10 +1,23 @@
 # Smart Market Watchlist
 
-Built for **Code, by Groww 2026** (HackerEarth), Sep 4–7 2026 · solo · 72-hour build.
+**Live demo → https://smart-market-watchlist-f2s6.onrender.com/**
+*(free Render tier — first load after idle takes ~40–60s to wake, then it's instant)*
+
+Built for **Code, by Groww 2026** (HackerEarth) · solo · 72-hour build.
 
 A stock watchlist that treats **"what changed"** as a diff problem, **"is this real"** as a statistics problem, and **"why did it happen"** as the only place AI is allowed near the truth.
 
-**📐 Architecture blueprint:** https://claude.ai/code/artifact/c629a769-6ed1-4d93-812a-efb7449a9286
+📐 **Architecture blueprint:** https://claude.ai/code/artifact/c629a769-6ed1-4d93-812a-efb7449a9286
+
+---
+
+## Try it in 30 seconds
+
+1. Open the [live link](https://smart-market-watchlist-f2s6.onrender.com/) — it signs you in automatically (real JWT, fixed demo account, no signup friction).
+2. Search **`HDFC`** — it resolves to HDFCBANK. Try `tata` or `bank` too.
+3. Add it. The price appears labelled, with today's move and a **`verified`** badge.
+4. Click **"price confirmed by 2 independent sources"** to see which sources agreed and how fast.
+5. If a stock has moved unusually, hit **"Why did this happen?"** for an AI explanation built only from cited news headlines.
 
 ---
 
@@ -12,14 +25,14 @@ A stock watchlist that treats **"what changed"** as a diff problem, **"is this r
 
 Most watchlists show a red/green ticker and stop there. This one:
 
-1. **Diff since your last visit.** A per-user, per-symbol checkpoint (`last_seen_at`) is bumped every time you view the list. Return after 3 days and the card shows a compressed summary of the gap — event count, biggest single move, net drift — not just today's number.
-2. **Volatility-normalized significance.** A move is scored in standard deviations against *that stock's own trailing volatility*, not a fixed percentage. A 2% move on a bluechip and a 2% move on a small-cap trigger different responses automatically. Defensible answer to "why 3%?" — because there is no arbitrary 3%.
-3. **Multi-source reconciliation with a confidence score.** Three genuinely independent sources (Yahoo Finance, NSE India, BSE India) are fanned out concurrently, resolved via **median** (robust to one broken source), and gated by a decomposed confidence score (`coverage` + `agreement` + `freshness`). A single-source quote can never be labeled `VERIFIED` — the invariant is enforced in code (see `market_data.py::tier_for`).
-4. **AI is walled off from ground truth — and now actually built.** No LLM ever decides a price or a significance verdict; that stays fully deterministic. `POST /api/stocks/{symbol}/events/{id}/narrate` calls an LLM *only* to explain an event that's already confirmed and persisted — it fetches real news via yfinance, then asks a model to synthesize a short cited explanation from those headlines (with an explicit instruction to say "no clear cause found" rather than invent one). **Provider-agnostic**: set `GROQ_API_KEY` (free tier, no credit card) or `ANTHROPIC_API_KEY`. Because Groq's API is OpenAI-compatible, `GROQ_BASE_URL` can also point at OpenRouter, Together, or a local Ollama through the same code path. With no key at all it still returns a real, cited headline — labeled honestly as `headline-fallback`, never pretending to be AI-generated. See [backend/app/narrator.py](backend/app/narrator.py).
-5. **A real background poller, not just a demo button.** APScheduler runs the identical pipeline (`pipeline.poll_and_detect`) on a 10-minute interval, gated to NSE trading hours (09:15–15:30 IST, Mon–Fri) — near-zero ingestion cost outside market hours, and cost bounded by *distinct symbols watched*, not by user count.
-6. **Live push notifications, not just a page you have to refresh.** A confirmed significant event fans out over WebSocket to every watcher of that symbol, tagged with a priority (P0 immediate / P1 batched / P2 digest) derived from the event's z-score and the watcher's own intent tag.
-7. **Real JWT auth, cross-device by construction.** Every watchlist row is scoped to a signed-in user via a real bcrypt-free (pbkdf2_sha256) password hash + JWT — not a hardcoded demo user id. A `demo-login` convenience route removes signup friction for judges without being a security bypass: it issues a token through the exact same code path as a real login.
-8. **Honest failure modes.** When a source 403s or times out, the tier is honestly demoted rather than the price fabricated. NSE currently returns 403 in this environment (their bot detection wins against a scraper adapter) — but Yahoo + BSE alone cross-verify to `VERIFIED` tier, live, in the demo.
+1. **Diff since your last visit.** A per-user, per-symbol checkpoint (`last_seen_at`) bumps every time you view the list. Return after 3 days and the card summarises the gap — event count, biggest move, net drift — not just today's number.
+2. **Volatility-normalized significance.** A move is scored in standard deviations against *that stock's own trailing volatility*, not a fixed percentage. Defensible answer to "why 3%?" — because there is no arbitrary 3%. Surfaced to users in plain language: *"2.4× this stock's normal daily move."*
+3. **Multi-source reconciliation with a confidence score.** Independent sources fan out concurrently, resolve via **median** (robust to one broken source), and are gated by a decomposed score (`coverage` + `agreement` + `freshness`). A single-source quote can **never** be labelled `verified` — that invariant is enforced in code and guarded by a test.
+4. **AI is walled off from ground truth.** No LLM ever decides a price or a significance verdict. `POST /api/stocks/{symbol}/events/{id}/narrate` only ever explains an event that's *already confirmed and persisted*, using real news headlines, and always returns `generated_by` so a headline lookup is never passed off as AI synthesis.
+5. **A real background poller.** APScheduler runs the identical pipeline on a 10-minute interval, gated to NSE trading hours — near-zero ingestion cost outside market hours, and cost bounded by *distinct symbols watched*, not user count.
+6. **Live push notifications.** A confirmed event fans out over WebSocket to every watcher, priority-tagged (P0/P1/P2) from the z-score and that watcher's intent tag.
+7. **Real JWT auth, cross-device by construction.** Every watchlist row is scoped to a signed-in user, not a hardcoded id.
+8. **Honest failure modes.** When a source fails or a symbol can't be resolved, the app says *why* — it never fabricates a price to fill the gap.
 
 ---
 
@@ -33,117 +46,109 @@ python -m pip install -r requirements.txt
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8765
 ```
 
-Then open **http://127.0.0.1:8765/** in a browser. Auto-generated API docs live at http://127.0.0.1:8765/docs.
+Open **http://127.0.0.1:8765/**. API docs at `/docs`. The frontend is served by the same FastAPI process — no Node, no build step.
 
-The frontend is served by the same FastAPI process — no separate Node/npm build.
-
-Optional environment variables (see [backend/.env.example](backend/.env.example)):
+Optional config (see [backend/.env.example](backend/.env.example)) — a gitignored `backend/.env` is auto-loaded:
 
 | Variable | Default | What it does |
 |---|---|---|
-| `JWT_SECRET_KEY` | insecure dev default (warns loudly) | Signs auth tokens. Set a real value before deploying anywhere reachable. |
+| `JWT_SECRET_KEY` | insecure dev default (warns loudly) | Signs auth tokens. Set a real value in production. |
 | `DATABASE_URL` | `sqlite:///./watchlist.db` | Swap to Postgres with zero code changes. |
-| `SCHEDULER_ENABLED` | `1` | Background poller (§07). Set `0` to rely only on the manual dev trigger. |
-| `POLL_INTERVAL_MINUTES` | `10` | How often the scheduler polls, during market hours only. |
-| `DEV_ROUTES` | `1` | Exposes `/api/dev/*` manual-trigger endpoints. Set `0` for a hardened deploy. |
-| `NARRATOR_PROVIDER` | `auto` | `auto` picks Groq if its key is set, else Anthropic, else headline-only. Pin with `groq` / `anthropic` / `none`. |
-| `GROQ_API_KEY` | unset | Optional, **recommended** — free tier at [console.groq.com](https://console.groq.com), no credit card. Enables real LLM synthesis. |
-| `GROQ_BASE_URL` | `https://api.groq.com/openai/v1` | OpenAI-compatible, so this also works for OpenRouter / Together / local Ollama. |
-| `GROQ_NARRATOR_MODEL` | `llama-3.3-70b-versatile` | Change if Groq rotates their model lineup. |
-| `ANTHROPIC_API_KEY` | unset | Alternative to Groq. Note: paid API credits, separate from a Claude Pro subscription. |
-| `ANTHROPIC_NARRATOR_MODEL` | `claude-haiku-4-5-20251001` | Which Claude model narrates, if that provider is used. |
+| `SCHEDULER_ENABLED` | `1` | Background poller. `0` to use only the manual trigger. |
+| `POLL_INTERVAL_MINUTES` | `10` | Poll cadence, during market hours only. |
+| `ENABLE_NSE` | `0` | NSE adapter. Off by default — see limitations. |
+| `GROQ_API_KEY` | unset | Free tier at [console.groq.com](https://console.groq.com), no credit card. Enables AI narration. |
+| `GROQ_NARRATOR_MODEL` | `llama-3.3-70b-versatile` | ⚠️ Groq rotates models — `openai/gpt-oss-120b` works as of this build. |
+| `ANTHROPIC_API_KEY` | unset | Alternative provider (paid API credits). |
 
-Check which provider actually got picked up: `curl localhost:8765/api/health` reports `narrator_provider`.
+`GET /api/health` reports the resolved `narrator_provider` and active `sources`, so config is verifiable rather than guessed.
 
-### First-run walkthrough
-
-1. **Open the app.** It signs you in automatically via `/api/auth/demo-login` — a real JWT, issued through the same path as a normal login, just against a fixed documented account (`demo@watchlist.local`) so there's no signup friction. Prefer your own account? `POST /api/auth/register` with an email + password works identically.
-2. **Add a symbol.** Try `TCS`, `RELIANCE`, `INFY`, `HDFCBANK`, or `SBIN`. The frontend automatically polls after adding.
-3. **See the tier chip.** Yahoo + BSE responding → `verified`. Only one → `best-available`. None → `unconfirmed`.
-4. **Open "why this tier?"** on any card to see per-source readings (which succeeded, latency, errors).
-5. **Watch for a live toast.** If a significant event fires on a symbol you're watching — from the background scheduler or a manual poll — it pushes over WebSocket and shows as a toast in the corner, no refresh needed. The green dot next to your email shows the socket is live.
-6. **Force an event now** rather than waiting for the 10-minute scheduler: open `http://127.0.0.1:8765/docs` and call `POST /api/dev/populate/{symbol}`, or click "Poll now" on any card.
-
-### Verify the pipeline directly
+### Verify it yourself
 
 ```bash
 cd backend
 python smoke.py                          # live multi-source fetch, no server needed
-python -m unittest discover -s tests     # 89 unit tests
+python -m unittest discover -s tests     # 91 unit tests
 ```
 
 ---
 
-## Code map (what to read, in order)
+## Code map (read in this order)
 
 | File | What it is |
 |---|---|
-| [backend/app/market_data.py](backend/app/market_data.py) | Load-bearing: multi-source reconciler, confidence score, tier invariant, per-source circuit breakers, bounded queues, exchange-circuit awareness. |
-| [backend/app/significance.py](backend/app/significance.py) | Z-score detector with tier-gated thresholds. Pure — no I/O. |
-| [backend/app/pipeline.py](backend/app/pipeline.py) | The shared poll → reconcile → detect → persist → notify cycle. One code path for both the manual dev trigger and the scheduler — no drift between what the demo button does and what the real poller does. |
-| [backend/app/scheduler.py](backend/app/scheduler.py) | APScheduler background poller. `market_is_open()` is pure and unit-tested directly. |
-| [backend/app/notifications.py](backend/app/notifications.py) | §08 fanout: DB-backed reverse index (symbol → watchers), priority classification, per-user WebSocket `ConnectionManager`. |
-| [backend/app/narrator.py](backend/app/narrator.py) | §11 AI boundary in code: fetches real news (yfinance, free), optionally calls Claude to synthesize a cited explanation of an *already-confirmed* event. Every response states `generated_by` so the UI never presents a headline lookup as if it were AI-generated. |
-| [backend/app/auth.py](backend/app/auth.py) + [routers/auth.py](backend/app/routers/auth.py) | JWT issuance/verification, password hashing, register/login/demo-login. |
-| [backend/app/sources/](backend/app/sources/) | Three source adapters: `yahoo.py`, `nse.py`, `bse.py`. All share the `MarketSource` protocol. Adapters never raise. |
-| [backend/app/routers/](backend/app/routers/) | `watchlist.py` (diff engine, auth-scoped, bumps `last_seen_at`), `stocks.py` (per-symbol drill-down, unauthenticated — shared data), `dev.py` (manual pipeline trigger). |
-| [backend/app/models.py](backend/app/models.py) | SQLAlchemy 2.0 models. |
-| [backend/static/index.html](backend/static/index.html) | Frontend — vanilla JS, auth flow, live WebSocket toasts. |
-| [backend/tests/](backend/tests/) | 73 unit tests. Notable: `TierInvariants` (single-source can't be `VERIFIED`), `MarketHours` (scheduler's gating logic), `ConnectionManagerBehavior` (dead-connection cleanup). |
-| [CLAUDE.md](CLAUDE.md) | Standing directives and design context — a fresh Claude Code session opened in this folder inherits every decision made here. |
+| [app/market_data.py](backend/app/market_data.py) | **Start here.** Multi-source reconciler, confidence score, the `verified` invariant, per-source circuit breakers, bounded queues, exchange-circuit awareness. |
+| [app/significance.py](backend/app/significance.py) | Z-score detector with tier-gated thresholds. Pure — no I/O. |
+| [app/pipeline.py](backend/app/pipeline.py) | The shared poll → reconcile → detect → persist → notify cycle. One code path for both the manual trigger and the scheduler — no drift between "the demo button" and "the real poller". |
+| [app/catalog.py](backend/app/catalog.py) | Instrument catalog + ranked search, and the single source of BSE scrip codes — so anything autocomplete offers is guaranteed resolvable. |
+| [app/scheduler.py](backend/app/scheduler.py) | Background poller. `market_is_open()` is pure and unit-tested. |
+| [app/notifications.py](backend/app/notifications.py) | Reverse index (symbol → watchers), priority classification, per-user WebSocket manager. |
+| [app/narrator.py](backend/app/narrator.py) | The AI boundary in code. Provider-agnostic (Groq / Anthropic / honest fallback). |
+| [app/auth.py](backend/app/auth.py) + [routers/auth.py](backend/app/routers/auth.py) | JWT issuance, password hashing, register/login/demo-login. |
+| [app/sources/](backend/app/sources/) | Source adapters sharing one `MarketSource` protocol. **Adapters never raise** — failures return as data. |
+| [static/index.html](backend/static/index.html) | Frontend — vanilla JS, dark/light themes, typeahead search, live toasts. No build step. |
+| [tests/](backend/tests/) | 91 tests. Notable: `TierInvariants` (single source can't be `verified`), `CitationIntegrity` (every prompted headline must be returned as a source), `MarketHours`, `ConnectionManagerBehavior`. |
+| [CLAUDE.md](CLAUDE.md) | Full design context — a fresh session opened in this repo inherits every decision. |
 
 ---
 
 ## What's built vs. what's roadmap
 
-**Built and demonstrable live:**
-- Multi-source reconciliation with 3 real sources (Yahoo + BSE working live, NSE configured but bot-blocked — see below)
-- Tier-gated confidence score (`verified` / `best-available` / `unconfirmed`)
-- Diff-since-last-visit with server-side `last_seen_at` checkpoints, scoped per authenticated user
-- Volatility-normalized (z-score) significance detection with tier-gated thresholds
-- Exchange-circuit awareness (`is_in_exchange_circuit`) with observed RELIANCE bounds
-- Per-source circuit breakers with exponential-cooldown backoff
-- **APScheduler background poller** — market-hours-gated, 10-minute interval, same pipeline as the manual trigger
-- **Live WebSocket notifications** — priority-tagged (P0/P1/P2), reverse-indexed by symbol, delivered to every open session for a user
-- **Real JWT authentication** — register/login/demo-login, pbkdf2-hashed passwords, every watchlist row scoped to `current_user`, not a hardcoded id
-- **AI event narrator** — real news fetch (yfinance, free, always on) + optional LLM synthesis via Groq or Anthropic, only ever explaining an already-confirmed event, never deciding one; honestly labels which path produced the text
-- 89 passing unit tests
-- Frontend UI with diff cards, tier chips, source-readings drill-down, live toast notifications, "Explain this move" narration panel
-- Render deployment config ([render.yaml](render.yaml)) — one click after connecting the repo
+**Built, deployed, and demonstrable live:**
+- Multi-source reconciliation (Yahoo + BSE live; NSE implemented but disabled — see below)
+- Tier-gated confidence score with the "≥2 sources to be verified" invariant
+- Diff-since-last-visit, per authenticated user
+- Volatility-normalized significance detection, thresholds gated by data confidence
+- Exchange-circuit awareness, per-source circuit breakers with exponential backoff
+- APScheduler background poller, market-hours gated
+- Live WebSocket notifications with priority tiers
+- Real JWT auth (register / login / demo-login)
+- AI event narrator — provider-agnostic, cited, honestly labelled
+- Searchable instrument catalog with ranked typeahead
+- Full frontend: dark/light themes, profile menu, labelled prices, onboarding legend
+- 91 passing unit tests
+- Deployed on Render via [render.yaml](render.yaml)
 
-**Documented but not built for the 72-hour scope:**
-- Real horizontal load-testing at concurrency
-- Licensed vendor feeds (would replace scraped sources at production Groww)
-- Redis-backed notification inbox with real coalescing windows (current implementation pushes immediately over WebSocket — the priority classification and reverse-index lookup are real, but true time-window batching for high-volume watchers is the documented production upgrade, see `notifications.py` module docstring)
+**Documented but not built (72-hour scope):**
+- Horizontal load-testing at real concurrency
+- Licensed vendor feeds (what production Groww would use instead of free sources)
+- Redis-backed notification inbox with true time-window coalescing
 
 ---
 
 ## Honest limitations
 
-- **NSE returns 403.** NSE has multi-layer bot detection (TLS fingerprint + IP reputation + behavioral) that a plain scraper adapter can't reliably beat. `curl_cffi` with Chrome TLS impersonation and browser-shaped XHR headers gets partway; the rest needs a residential proxy or licensed feed. **This is actually a feature of the demo**, not a bug — it lets you see the tier drop from `VERIFIED` to `BEST-AVAILABLE` honestly when a source dies, which is precisely what the confidence-gating design was built for.
-- **BSE uses numeric scrip codes.** A small hardcoded map covers 40 top-liquidity names; symbols outside that map return `unknown_scrip_code` honestly rather than failing silently.
-- **SQLite on the free Render tier is ephemeral.** Data resets on redeploy or after the free instance spins down from inactivity. Acceptable for a judged demo that gets populated live; swap `DATABASE_URL` to a Render Postgres instance for real persistence — no code changes needed.
-- **No load-test.** I did not stress-test concurrent users in 72 hours. The architecture doesn't have a scaling cliff in it (ingestion is bounded by symbol count, reads are cache-shaped, the API tier is stateless), but I own that I haven't proven it under load. Pretending otherwise would look worse than saying so.
-- **Notification coalescing is simplified.** Priority tagging and the reverse-index fanout are real; the time-window batching that would prevent a burst of 20 events becoming 20 separate pushes is documented but not built (see `notifications.py`).
+- **NSE is disabled by default.** Their bot detection blocks datacenter IPs outright — every request from Render returns 403. `curl_cffi` TLS impersonation plus browser-shaped XHR headers gets partway; beating it needs a residential proxy or a licensed feed. Shipping a permanently-failing source is worse than omitting it: it dragged `coverage` to 2/3, lowering every quote's confidence for a reason no user could act on. The adapter and its tests stay in the tree and work from a residential IP (`ENABLE_NSE=1`). This is a deployment switch, not a deletion.
+- **Catalog covers 40 major NSE stocks.** Only instruments with a verified BSE scrip code are included — inventing codes would produce symbols that autocomplete happily then fail to fetch. Production would seed the full list from BSE's own securities endpoint.
+- **Indian equities only.** Global tickers (`AAPL`, `SAP`) won't resolve, and the app now says so explicitly rather than showing a blank card.
+- **SQLite on Render's free tier is ephemeral.** Data resets on redeploy or after idle spin-down. Point `DATABASE_URL` at Postgres for real persistence — no code changes needed.
+- **No load-test.** I didn't stress-test concurrency in 72 hours. The architecture has no scaling cliff in it (ingestion bounded by symbol count, reads cache-shaped, API tier stateless), but I haven't proven it under load and won't claim otherwise.
+- **Notification coalescing is simplified.** Priority tagging and reverse-index fanout are real; time-window batching is documented, not built.
+
+---
+
+## Two bugs worth mentioning
+
+Both were found by testing against live services, not by reading code:
+
+1. **Citation integrity.** The narrator prompted the model with 5 headlines but returned only 3 in the response. When the model legitimately cited headline #5, it *looked* like a hallucination with no way to verify it — silently breaking the "always cited" guarantee. The model was correct the whole time; the serialization was hiding the evidence. Fixed, with a regression test asserting the prompted set and returned set match.
+2. **`localStorage` throws.** In private browsing and some embedded contexts the accessor raises rather than returning null, which killed the entire frontend with an unrecoverable error. Every access is now wrapped with an in-memory fallback — degraded, not dead.
 
 ---
 
 ## Deploying
 
-[render.yaml](render.yaml) is a ready-to-use Render Blueprint. After pushing this repo to GitHub:
-
-1. On [render.com](https://render.com), **New → Blueprint**, connect the repo.
-2. Render reads `render.yaml` automatically — build command, start command, and env vars (including an auto-generated `JWT_SECRET_KEY`) are already configured.
-3. First deploy takes a few minutes. The free tier spins down after 15 minutes of inactivity and cold-starts on the next request (~30–60s) — expected, not a bug.
+[render.yaml](render.yaml) is a ready-to-use Blueprint. On [render.com](https://render.com): **New → Blueprint**, connect the repo, deploy. Then add `GROQ_API_KEY` and `GROQ_NARRATOR_MODEL` in the Environment tab to enable AI narration.
 
 ## Tech stack
 
-- **Backend:** Python 3.11+, FastAPI, SQLAlchemy 2.0, SQLite (Postgres via `DATABASE_URL` env)
-- **Auth:** `python-jose` (JWT), `passlib` with `pbkdf2_sha256` (no native bcrypt dependency — sidesteps a known passlib/bcrypt version-compat footgun)
-- **Scheduling:** `APScheduler` (AsyncIO scheduler, in-process)
-- **Ingestion:** `yfinance` (Yahoo), `curl_cffi` (NSE + BSE — browser TLS impersonation), `asyncio` fan-out
-- **Realtime:** native FastAPI `WebSocket`
-- **Frontend:** vanilla JS + inline CSS (no build step)
-- **Testing:** `unittest`, no external test runner
+- **Backend:** Python 3.11+, FastAPI, SQLAlchemy 2.0, SQLite (Postgres-ready via `DATABASE_URL`)
+- **Auth:** `python-jose` (JWT), `passlib` with `pbkdf2_sha256` (no native bcrypt — sidesteps a known version-compat footgun)
+- **Scheduling:** `APScheduler`
+- **Ingestion:** `yfinance`, `curl_cffi` (browser TLS impersonation for BSE), `asyncio` fan-out
+- **AI:** provider-agnostic via OpenAI-compatible transport (Groq default) or Anthropic SDK
+- **Realtime:** native FastAPI WebSocket
+- **Frontend:** vanilla JS + CSS custom properties, no build step
+- **Testing:** `unittest`, no external runner
 
-Full requirements in [backend/requirements.txt](backend/requirements.txt).
+Full dependency list in [backend/requirements.txt](backend/requirements.txt).
