@@ -16,7 +16,7 @@ from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
 from ..db import get_db
-from ..models import PriceTick, SignificantEventRow, User, WatchlistItem
+from ..models import PriceTick, SignificantEventRow, SourceReadingRow, User, WatchlistItem
 from ..schemas import BiggestEventOut, DiffSummaryOut, WatchlistItemCreate
 
 router = APIRouter()
@@ -27,6 +27,56 @@ def _ensure_tz(dt: datetime) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
 
 
+def _explain_missing_data(db: Session, symbol: str) -> str:
+    """Turn the raw per-source failures into one plain-English sentence.
+
+    The pipeline always records WHY each source failed (SourceReadingRow).
+    Without this, a user typing a non-NSE ticker just sees a blank card and
+    can't tell whether the app is broken, the symbol is wrong, or the market
+    is closed. The system knows the difference — it should say so.
+    """
+    latest = (
+        db.query(SourceReadingRow)
+        .filter_by(symbol=symbol)
+        .order_by(SourceReadingRow.fetched_at.desc())
+        .limit(6)
+        .all()
+    )
+    if not latest:
+        return "Not polled yet — click “Poll now” to fetch."
+
+    # Most recent attempt per source
+    errors: dict[str, str] = {}
+    for row in latest:
+        errors.setdefault(row.source, row.error or "")
+
+    not_found = {"symbol_not_found", "unknown_scrip_code", "empty_price"}
+    reachable_failures = {"http_403", "timeout", "circuit_open"}
+
+    said_not_found = [s for s, e in errors.items() if e in not_found]
+    said_unreachable = [s for s, e in errors.items() if e in reachable_failures
+                        or e.startswith("http_")]
+
+    # If every source that could actually answer says "no such instrument",
+    # the symbol itself is the problem — not the plumbing.
+    if said_not_found and not any(e == "" for e in errors.values()):
+        if len(said_not_found) >= len([s for s in errors if s != "nse"]):
+            return (
+                f"“{symbol}” doesn’t look like an NSE-listed symbol. This app "
+                f"covers Indian equities (NSE/BSE) — try TCS, RELIANCE, INFY, "
+                f"HDFCBANK or SBIN."
+            )
+
+    if said_unreachable and not said_not_found:
+        return (
+            "All data sources are temporarily unreachable. The price shown "
+            "(if any) is the last confirmed value — nothing has been fabricated."
+        )
+
+    detail = ", ".join(f"{s}: {e or 'ok'}" for s, e in errors.items())
+    return f"No usable price could be confirmed ({detail})."
+
+
 def _diff_summary(db: Session, item: WatchlistItem) -> DiffSummaryOut:
     tick = db.query(PriceTick).filter_by(symbol=item.symbol).first()
     now = datetime.now(timezone.utc)
@@ -35,6 +85,19 @@ def _diff_summary(db: Session, item: WatchlistItem) -> DiffSummaryOut:
         return DiffSummaryOut(
             id=item.id, symbol=item.symbol, intent_tag=item.intent_tag,
             status="no_data_yet",
+            data_issue=_explain_missing_data(db, item.symbol),
+        )
+
+    # A tick exists but nothing could be verified — explain rather than
+    # rendering a silent, empty card.
+    if tick.price <= 0 or tick.tier == "unconfirmed":
+        return DiffSummaryOut(
+            id=item.id, symbol=item.symbol, intent_tag=item.intent_tag,
+            current_price=tick.price if tick.price > 0 else None,
+            tier=tick.tier, confidence=round(tick.confidence, 3),
+            staleness_secs=round((now - _ensure_tz(tick.fetched_at)).total_seconds(), 1),
+            status="no_data_yet",
+            data_issue=_explain_missing_data(db, item.symbol),
         )
 
     fetched = _ensure_tz(tick.fetched_at)

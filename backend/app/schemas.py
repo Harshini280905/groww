@@ -50,6 +50,11 @@ class DiffSummaryOut(BaseModel):
     event_count: int = 0
     net_drift_pct: Optional[float] = None
     biggest_event: Optional[BiggestEventOut] = None
+    # Plain-English explanation when there is no usable price. The system
+    # always knows WHY a symbol has no data (not NSE-listed / all sources
+    # down / never polled) — staying silent about it is a UX bug, not a
+    # feature. Null whenever data is fine.
+    data_issue: Optional[str] = None
 
 
 class SignificantEventOut(BaseModel):

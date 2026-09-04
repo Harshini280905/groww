@@ -99,11 +99,21 @@ class YahooSource:
                 error="timeout",
             )
         except Exception as e:
+            # yfinance raises assorted internal errors for a ticker that
+            # simply doesn't exist (KeyError on 'currentTradingPeriod' is the
+            # common one). Leaking that raw is useless to a user — normalise
+            # the "no such ticker" family into one honest, actionable code.
+            raw = f"{type(e).__name__}: {str(e)[:100]}"
+            not_found_markers = (
+                "currentTradingPeriod", "No data found", "delisted",
+                "404", "Not Found", "symbol may be delisted",
+            )
+            err = "symbol_not_found" if any(m in raw for m in not_found_markers) else raw
             return SourceReading(
                 source=self.name, symbol=symbol,
                 price=0.0, volume=None,
                 fetched_at=now(), latency_ms=latency(),
-                error=f"{type(e).__name__}: {str(e)[:100]}",
+                error=err,
             )
 
         if price <= 0:

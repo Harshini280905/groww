@@ -236,6 +236,8 @@
     font-size: 13px;
   }
   .diff.significant { background: var(--warn-soft); border-color: var(--warn); }
+  .diff.no-data { background: var(--down-soft); border-color: var(--down); }
+  .diff.no-data .diff-title { color: var(--down); }
   .diff .diff-title {
     font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
     color: var(--ink-faint); font-weight: 600; margin-bottom: 4px;
@@ -341,8 +343,9 @@
 <div class="container">
 
   <form class="addbar" id="add-form">
-    <label>Symbol</label>
-    <input name="symbol" placeholder="TCS" required maxlength="20" autocomplete="off">
+    <label title="NSE / BSE listed Indian equities only">Symbol</label>
+    <input name="symbol" placeholder="TCS" required maxlength="20" autocomplete="off"
+           title="Indian equities only (NSE/BSE) — e.g. TCS, RELIANCE, INFY, HDFCBANK, SBIN">
     <label>Intent</label>
     <select name="intent_tag">
       <option value="">(none)</option>
@@ -359,6 +362,7 @@
   <div id="empty" class="empty" hidden>
     <h2>No symbols yet.</h2>
     <p>Try adding <b>TCS</b>, <b>RELIANCE</b>, <b>INFY</b>, <b>HDFCBANK</b>, or <b>SBIN</b>.</p>
+    <p style="margin-top:6px; font-size:12.5px;">Indian equities only — NSE/BSE listed. Global tickers like <code>SAP</code> or <code>AAPL</code> won't resolve.</p>
   </div>
 
   <p class="doc-link" style="margin-top:28px">
@@ -545,8 +549,12 @@ function renderDiff(item) {
   const detail = el("div", { className: "diff-detail" });
 
   if (item.status === "no_data_yet") {
-    title.textContent = "no data yet";
-    body.textContent = "Symbol added but not yet polled. Click Poll to fetch.";
+    wrap.className = "diff no-data";
+    title.textContent = "no confirmed data";
+    // The backend always explains WHY (not NSE-listed / sources down /
+    // never polled). Show that instead of a uselessly blank card.
+    body.textContent = item.data_issue
+      || "Symbol added but not yet polled. Click Poll now to fetch.";
   } else if (item.status === "no_significant_change") {
     title.textContent = "since your last visit";
     body.textContent = "Nothing meaningful — no move crossed the significance threshold.";
