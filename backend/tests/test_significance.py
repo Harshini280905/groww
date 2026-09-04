@@ -46,6 +46,50 @@ _TYPICAL_CLOSES = [
 _TYPICAL_VOLUMES = [1_000_000.0] * len(_TYPICAL_CLOSES)
 
 
+class NaNResilience(unittest.TestCase):
+    """Regression guard for a crash found by replaying real market history.
+
+    yfinance returns NaN closes for some sessions (holidays, halts, gaps in
+    its own data). statistics.stdev raises a confusing AttributeError rather
+    than a clean error when a NaN reaches it, so a single bad bar would take
+    significance detection down for that symbol entirely.
+    """
+
+    def test_nan_in_closes_does_not_crash(self):
+        closes = [100.0, 101.0, float("nan"), 102.0, 101.5, 103.0, 102.0]
+        mean, sd = trailing_volatility(closes)   # must not raise
+        self.assertTrue(mean == mean)            # not NaN
+        self.assertTrue(sd == sd)
+
+    def test_inf_in_closes_does_not_crash(self):
+        closes = [100.0, 101.0, float("inf"), 102.0, 101.5, 103.0]
+        mean, sd = trailing_volatility(closes)
+        self.assertTrue(mean == mean and sd == sd)
+
+    def test_zero_and_negative_closes_are_dropped(self):
+        closes = [100.0, 0.0, -5.0, 101.0, 102.0, 101.0, 103.0]
+        mean, sd = trailing_volatility(closes)
+        self.assertTrue(mean == mean and sd == sd)
+        self.assertGreaterEqual(sd, 0.0)
+
+    def test_all_nan_returns_zeros_not_a_crash(self):
+        mean, sd = trailing_volatility([float("nan")] * 10)
+        self.assertEqual((mean, sd), (0.0, 0.0))
+
+    def test_detector_survives_nan_history(self):
+        from app.market_data import ConfidenceTier, ReconciledQuote
+        from datetime import datetime, timezone
+        q = ReconciledQuote(
+            symbol="TCS", price=110.0, volume=None,
+            resolved_at=datetime.now(timezone.utc), confidence=0.9,
+            tier=ConfidenceTier.VERIFIED, coverage=1.0, agreement=1.0,
+            freshness=1.0, readings=(),
+        )
+        closes = [100.0, 101.0, float("nan"), 102.0, 101.0, 103.0, 102.0, 101.0]
+        result = detect_significance(q, daily_closes=closes)   # must not raise
+        self.assertIsNotNone(result.reason)
+
+
 class MathHelpers(unittest.TestCase):
     def test_trailing_volatility_flat_history_is_zero(self):
         mean, sd = trailing_volatility([100.0] * 21)

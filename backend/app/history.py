@@ -8,6 +8,7 @@ Feeds the trailing-volatility calc in significance.py.
 from __future__ import annotations
 
 import asyncio
+import math
 from datetime import datetime, timezone
 from typing import TypedDict
 
@@ -34,14 +35,32 @@ async def fetch_daily_bars(symbol: str, period: str = "60d") -> list[DailyBarDic
                 return []
             bars: list[DailyBarDict] = []
             for idx, row in hist.iterrows():
+                # yfinance emits NaN closes for some sessions (holidays,
+                # halts, gaps in its own data). Dropping them here keeps bad
+                # bars out of the database entirely, rather than letting a
+                # single NaN poison every volatility calculation downstream.
+                try:
+                    close = float(row["Close"])
+                    open_ = float(row["Open"])
+                    high = float(row["High"])
+                    low = float(row["Low"])
+                except (TypeError, ValueError):
+                    continue
+                if not all(math.isfinite(v) for v in (close, open_, high, low)):
+                    continue
+                if close <= 0:
+                    continue
+                try:
+                    volume = float(row["Volume"])
+                    if not math.isfinite(volume):
+                        volume = 0.0
+                except (TypeError, ValueError):
+                    volume = 0.0
                 bars.append(
                     {
                         "date": idx.to_pydatetime().replace(tzinfo=timezone.utc),
-                        "open": float(row["Open"]),
-                        "high": float(row["High"]),
-                        "low": float(row["Low"]),
-                        "close": float(row["Close"]),
-                        "volume": float(row["Volume"]) if row["Volume"] else 0.0,
+                        "open": open_, "high": high, "low": low,
+                        "close": close, "volume": volume,
                     }
                 )
             return bars

@@ -25,6 +25,7 @@ every output is a return value. Callers wire in persistence themselves.
 
 from __future__ import annotations
 
+import math
 import statistics
 from dataclasses import dataclass
 from datetime import datetime
@@ -125,19 +126,30 @@ def trailing_volatility(
 
     Computes daily returns internally from consecutive closes — caller
     passes prices, not returns.
+
+    NaN handling is not paranoia: yfinance genuinely returns NaN closes for
+    some sessions (holidays, halts, gaps in its own data), and
+    statistics.stdev raises a confusing AttributeError rather than a clean
+    error when a NaN reaches it. A single bad bar would otherwise take
+    significance detection down for that symbol entirely, so non-finite and
+    non-positive prices are dropped before any arithmetic.
     """
-    if len(daily_closes) < 2:
+    clean = [c for c in daily_closes if isinstance(c, (int, float)) and math.isfinite(c) and c > 0]
+    if len(clean) < 2:
         return 0.0, 0.0
-    closes = daily_closes[-(window + 1):] if len(daily_closes) > window else daily_closes
+    closes = clean[-(window + 1):] if len(clean) > window else clean
     returns = [
         (closes[i] - closes[i - 1]) / closes[i - 1]
         for i in range(1, len(closes))
         if closes[i - 1] > 0
     ]
+    returns = [r for r in returns if math.isfinite(r)]
     if not returns:
         return 0.0, 0.0
     mean_r = statistics.mean(returns)
     stddev_r = statistics.stdev(returns) if len(returns) > 1 else 0.0
+    if not (math.isfinite(mean_r) and math.isfinite(stddev_r)):
+        return 0.0, 0.0
     return mean_r, stddev_r
 
 
