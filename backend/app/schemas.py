@@ -18,6 +18,13 @@ class WatchlistItemCreate(BaseModel):
     intent_tag: Optional[str] = Field(default=None, max_length=32)
 
 
+class InstrumentOut(BaseModel):
+    """A searchable instrument from the catalog."""
+    symbol: str
+    name: str
+    sector: str
+
+
 class BiggestEventOut(BaseModel):
     """The most-notable event within a diff window — one per diff summary."""
     id: int
@@ -41,8 +48,17 @@ class DiffSummaryOut(BaseModel):
 
     id: int
     symbol: str
+    # Human-readable company name. A bare ticker means nothing to someone
+    # new — "TCS" should read as "Tata Consultancy Services".
+    company_name: Optional[str] = None
+    sector: Optional[str] = None
     intent_tag: Optional[str] = None
     current_price: Optional[float] = None
+    # Previous close and today's move. Without these, the rupee figure on a
+    # card is an unlabelled number with no reference point — the single most
+    # confusing thing a new user hits.
+    prev_close: Optional[float] = None
+    day_change_pct: Optional[float] = None
     tier: str = "unconfirmed"
     confidence: float = 0.0
     staleness_secs: Optional[float] = None

@@ -6,766 +6,827 @@
 <title>Smart Market Watchlist</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --bg: #F5F6F8;
-    --paper: #FFFFFF;
-    --ink: #142B4A;
-    --ink-soft: #3F5872;
-    --ink-faint: #7488A0;
-    --line: rgba(20,43,74,0.10);
-    --line-strong: rgba(20,43,74,0.18);
-    --accent: #1E5AA8;
-    --accent-soft: #DCE7F3;
-    --up: #1E8A5F;
-    --up-soft: #DCEFE5;
-    --down: #B8452C;
-    --down-soft: #F5E2DC;
-    --warn: #9C7A1E;
-    --warn-soft: #F1E7CE;
-    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* ---- dark is the default; light is the opt-in ---- */
+  :root,
+  :root[data-theme="dark"] {
+    --bg:            #0B0E14;
+    --surface:       #131822;
+    --surface-2:     #1A2130;
+    --border:        #232C3D;
+    --border-strong: #2E3950;
+    --text:          #E9EDF5;
+    --text-dim:      #97A3B8;
+    --text-faint:    #6B7688;
+    --accent:        #00D09C;
+    --accent-dim:    rgba(0,208,156,0.14);
+    --up:            #00C48C;
+    --up-bg:         rgba(0,196,140,0.13);
+    --down:          #FF5B5B;
+    --down-bg:       rgba(255,91,91,0.13);
+    --warn:          #FFB020;
+    --warn-bg:       rgba(255,176,32,0.13);
+    --shadow:        0 4px 24px rgba(0,0,0,0.4);
   }
+  :root[data-theme="light"] {
+    --bg:            #F4F6FA;
+    --surface:       #FFFFFF;
+    --surface-2:     #F0F3F8;
+    --border:        #E1E6EF;
+    --border-strong: #CBD3E1;
+    --text:          #101725;
+    --text-dim:      #4E5A70;
+    --text-faint:    #8391A8;
+    --accent:        #00A87E;
+    --accent-dim:    rgba(0,168,126,0.12);
+    --up:            #009E71;
+    --up-bg:         rgba(0,158,113,0.12);
+    --down:          #D93A3A;
+    --down-bg:       rgba(217,58,58,0.10);
+    --warn:          #B37400;
+    --warn-bg:       rgba(179,116,0,0.12);
+    --shadow:        0 2px 14px rgba(16,23,37,0.09);
+  }
+
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; }
   body {
     background: var(--bg);
-    color: var(--ink);
+    color: var(--text);
     font-family: Inter, -apple-system, "Segoe UI", sans-serif;
     font-size: 14px;
     line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
   }
-  a { color: var(--accent); }
-  button { font-family: inherit; }
+  button, input, select { font-family: inherit; }
+  .mono { font-family: "JetBrains Mono", ui-monospace, monospace; }
+  .num  { font-family: "JetBrains Mono", ui-monospace, monospace; font-variant-numeric: tabular-nums; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
-  header.topbar {
-    background: var(--paper);
-    border-bottom: 1px solid var(--line-strong);
-    padding: 18px 24px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    flex-wrap: wrap;
+  /* ================= TOP NAV ================= */
+  .topnav {
+    position: sticky; top: 0; z-index: 100;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 0 20px;
+    height: 60px;
+    display: flex; align-items: center; gap: 16px;
   }
-  header.topbar .brand {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
+  .brand { display: flex; align-items: center; gap: 10px; flex-shrink: 0; }
+  .brand-mark {
+    width: 30px; height: 30px; border-radius: 8px;
+    background: var(--accent);
+    display: grid; place-items: center;
+    color: #04140F; font-weight: 800; font-size: 15px;
   }
-  header.topbar .brand .eyebrow {
-    font-size: 10.5px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--accent);
-    font-weight: 700;
-  }
-  header.topbar .brand h1 {
-    margin: 0;
-    font-size: 20px;
-    font-weight: 700;
-    letter-spacing: -0.01em;
-  }
-  header.topbar .actions {
-    display: flex; gap: 8px; align-items: center;
-  }
-  .who {
-    font-family: var(--mono);
-    font-size: 11px;
-    color: var(--ink-faint);
-    display: flex; align-items: center; gap: 8px;
-  }
-  .who button {
-    background: none; border: none; color: var(--accent);
-    font: inherit; cursor: pointer; padding: 0; text-decoration: underline;
-  }
-  .ws-dot {
-    width: 7px; height: 7px; border-radius: 50%;
-    background: var(--ink-faint);
-    display: inline-block;
-  }
-  .ws-dot.live { background: var(--up); }
+  .brand-text { display: flex; flex-direction: column; line-height: 1.15; }
+  .brand-text .t1 { font-weight: 700; font-size: 14.5px; letter-spacing: -0.01em; }
+  .brand-text .t2 { font-size: 10px; color: var(--text-faint); letter-spacing: 0.06em; text-transform: uppercase; }
 
-  #toast-stack {
-    position: fixed;
-    top: 16px; right: 16px;
-    display: flex; flex-direction: column; gap: 8px;
-    z-index: 1000;
-    max-width: 340px;
+  .nav-spacer { flex: 1; }
+  .nav-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+
+  .icon-btn {
+    width: 34px; height: 34px; border-radius: 8px;
+    background: var(--surface-2); border: 1px solid var(--border);
+    color: var(--text-dim); cursor: pointer;
+    display: grid; place-items: center; font-size: 15px;
+    transition: background .15s, color .15s;
   }
+  .icon-btn:hover { background: var(--border); color: var(--text); }
+
+  /* profile / avatar */
+  .profile { position: relative; }
+  .avatar {
+    width: 34px; height: 34px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--accent), #0891b2);
+    color: #04140F; font-weight: 700; font-size: 13px;
+    display: grid; place-items: center; cursor: pointer;
+    border: none; letter-spacing: 0.02em;
+  }
+  .profile-menu {
+    position: absolute; top: 42px; right: 0;
+    background: var(--surface); border: 1px solid var(--border-strong);
+    border-radius: 10px; box-shadow: var(--shadow);
+    min-width: 230px; padding: 6px; z-index: 200;
+  }
+  .profile-menu[hidden] { display: none; }
+  .profile-head { padding: 10px 12px 12px; border-bottom: 1px solid var(--border); }
+  .profile-head .pm-label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-faint); }
+  .profile-head .pm-email { font-size: 12.5px; color: var(--text); word-break: break-all; margin-top: 3px; }
+  .profile-row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 9px 12px; font-size: 12.5px; color: var(--text-dim);
+  }
+  .profile-menu button.pm-action {
+    width: 100%; text-align: left; background: none; border: none;
+    color: var(--down); font-size: 13px; font-weight: 600;
+    padding: 10px 12px; border-radius: 7px; cursor: pointer;
+  }
+  .profile-menu button.pm-action:hover { background: var(--down-bg); }
+
+  .conn { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--text-faint); }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--text-faint); }
+  .dot.live { background: var(--up); box-shadow: 0 0 0 3px var(--up-bg); }
+
+  /* ================= LAYOUT ================= */
+  .page { max-width: 1180px; margin: 0 auto; padding: 22px 20px 60px; }
+
+  .page-head { margin-bottom: 18px; }
+  .page-head h1 { margin: 0 0 4px; font-size: 21px; font-weight: 700; letter-spacing: -0.015em; }
+  .page-head p  { margin: 0; color: var(--text-dim); font-size: 13.5px; max-width: 62ch; }
+
+  /* ================= SEARCH ================= */
+  .search-wrap { position: relative; margin-bottom: 20px; max-width: 560px; }
+  .search-box {
+    display: flex; align-items: center; gap: 10px;
+    background: var(--surface); border: 1px solid var(--border-strong);
+    border-radius: 10px; padding: 0 12px; height: 46px;
+    transition: border-color .15s;
+  }
+  .search-box:focus-within { border-color: var(--accent); }
+  .search-box .s-icon { color: var(--text-faint); font-size: 15px; }
+  .search-box input {
+    flex: 1; background: none; border: none; outline: none;
+    color: var(--text); font-size: 14.5px; min-width: 0;
+  }
+  .search-box input::placeholder { color: var(--text-faint); }
+  .search-hint { font-size: 11px; color: var(--text-faint); margin-top: 6px; }
+
+  .suggestions {
+    position: absolute; top: 52px; left: 0; right: 0; z-index: 50;
+    background: var(--surface); border: 1px solid var(--border-strong);
+    border-radius: 10px; box-shadow: var(--shadow); overflow: hidden;
+  }
+  .suggestions[hidden] { display: none; }
+  .sug {
+    display: flex; align-items: center; gap: 12px;
+    padding: 11px 14px; cursor: pointer; border: none; width: 100%;
+    background: none; text-align: left; color: var(--text);
+    border-bottom: 1px solid var(--border);
+  }
+  .sug:last-child { border-bottom: none; }
+  .sug:hover, .sug.active { background: var(--surface-2); }
+  .sug-sym { font-family: "JetBrains Mono", monospace; font-weight: 600; font-size: 13px; min-width: 92px; }
+  .sug-name { flex: 1; font-size: 13px; color: var(--text-dim); }
+  .sug-sector {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--text-faint); background: var(--surface-2);
+    padding: 3px 7px; border-radius: 5px; border: 1px solid var(--border);
+  }
+  .sug-empty { padding: 14px; font-size: 13px; color: var(--text-dim); }
+
+  /* ================= CARDS ================= */
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 14px; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px;
+    display: flex; flex-direction: column; gap: 12px;
+  }
+  .card.attn { border-color: var(--warn); }
+  .card.dead { border-color: var(--down); }
+
+  .c-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; }
+  .c-sym { font-family: "JetBrains Mono", monospace; font-weight: 600; font-size: 14.5px; letter-spacing: 0.02em; }
+  .c-name { font-size: 12px; color: var(--text-dim); margin-top: 1px; }
+  .c-tag {
+    font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--accent); background: var(--accent-dim);
+    padding: 3px 7px; border-radius: 5px; white-space: nowrap;
+  }
+
+  /* the price block — labelled, so the number means something */
+  .price-block { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .price-label {
+    display: block; font-size: 10px; text-transform: uppercase;
+    letter-spacing: 0.07em; color: var(--text-faint); margin-bottom: 3px;
+  }
+  .price-val { font-family: "JetBrains Mono", monospace; font-variant-numeric: tabular-nums;
+               font-size: 25px; font-weight: 600; letter-spacing: -0.01em; }
+  .price-chg { font-family: "JetBrains Mono", monospace; font-size: 13px; font-weight: 600; }
+  .price-chg.up { color: var(--up); }
+  .price-chg.down { color: var(--down); }
+  .price-chg.flat { color: var(--text-faint); }
+  .prev-close { font-size: 11px; color: var(--text-faint); }
+
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+  .chip {
+    display: inline-flex; align-items: center; gap: 5px;
+    font-family: "JetBrains Mono", monospace; font-size: 10.5px; font-weight: 500;
+    padding: 3px 8px; border-radius: 20px; white-space: nowrap;
+  }
+  .chip::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .chip.verified { background: var(--up-bg); color: var(--up); }
+  .chip.best     { background: var(--warn-bg); color: var(--warn); }
+  .chip.unconf   { background: var(--down-bg); color: var(--down); }
+  .chip.plain    { background: var(--surface-2); color: var(--text-faint); border: 1px solid var(--border); }
+  .chip.plain::before { display: none; }
+
+  .panel { background: var(--surface-2); border: 1px solid var(--border); border-radius: 9px; padding: 11px 12px; }
+  .panel.attn { background: var(--warn-bg); border-color: var(--warn); }
+  .panel.dead { background: var(--down-bg); border-color: var(--down); }
+  .panel-title { font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--text-faint); margin-bottom: 5px; }
+  .panel.attn .panel-title { color: var(--warn); }
+  .panel.dead .panel-title { color: var(--down); }
+  .panel-body { font-size: 13px; color: var(--text); }
+  .panel-detail { font-family: "JetBrains Mono", monospace; font-size: 11px; color: var(--text-dim); margin-top: 5px; }
+
+  details.drill { border-top: 1px solid var(--border); padding-top: 10px; }
+  details.drill summary {
+    cursor: pointer; list-style: none; font-size: 11px;
+    color: var(--text-faint); text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  details.drill summary::-webkit-details-marker { display: none; }
+  details.drill summary::after { content: " ›"; }
+  details.drill[open] summary::after { content: " ⌄"; }
+  .readings { margin-top: 9px; display: flex; flex-direction: column; gap: 5px; }
+  .reading { display: flex; justify-content: space-between; gap: 10px;
+             font-family: "JetBrains Mono", monospace; font-size: 11.5px; }
+  .reading .r-src { color: var(--text); }
+  .reading .r-val { color: var(--text-dim); }
+  .reading .r-err { color: var(--down); font-size: 10.5px; }
+
+  .c-actions { display: flex; gap: 7px; justify-content: flex-end; }
+  .btn {
+    padding: 7px 13px; border-radius: 7px; font-size: 12.5px; font-weight: 600;
+    cursor: pointer; border: 1px solid transparent; white-space: nowrap;
+  }
+  .btn.primary { background: var(--accent); color: #04140F; }
+  .btn.primary:hover { filter: brightness(1.08); }
+  .btn.ghost { background: var(--surface-2); color: var(--text-dim); border-color: var(--border); }
+  .btn.ghost:hover { color: var(--text); border-color: var(--border-strong); }
+  .btn.danger { background: none; color: var(--down); border-color: transparent; }
+  .btn.danger:hover { background: var(--down-bg); }
+  .btn.tiny { padding: 5px 10px; font-size: 11.5px; }
+  .btn:disabled { opacity: .5; cursor: not-allowed; }
+
+  /* narration */
+  .narration { margin-top: 9px; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 11px; font-size: 12.5px; }
+  .narration[hidden] { display: none; }
+  .n-badge {
+    display: inline-block; font-family: "JetBrains Mono", monospace; font-size: 9.5px;
+    text-transform: uppercase; letter-spacing: 0.05em; padding: 3px 8px;
+    border-radius: 20px; background: var(--accent-dim); color: var(--accent); margin-bottom: 7px;
+  }
+  .n-text { color: var(--text); line-height: 1.55; }
+  .n-src { margin-top: 8px; font-size: 11px; color: var(--text-faint); display: flex; flex-direction: column; gap: 3px; }
+  .n-src a { color: var(--accent); text-decoration: none; }
+  .n-src a:hover { text-decoration: underline; }
+
+  /* empty / onboarding */
+  .empty {
+    background: var(--surface); border: 1px dashed var(--border-strong);
+    border-radius: 12px; padding: 40px 26px; text-align: center;
+  }
+  .empty h2 { margin: 0 0 8px; font-size: 17px; font-weight: 700; }
+  .empty p { margin: 0 auto 18px; color: var(--text-dim); font-size: 13.5px; max-width: 52ch; }
+  .quick { display: flex; gap: 8px; justify-content: center; flex-wrap: wrap; }
+  .quick button {
+    font-family: "JetBrains Mono", monospace; font-size: 12px; font-weight: 600;
+    padding: 8px 13px; border-radius: 8px; cursor: pointer;
+    background: var(--surface-2); border: 1px solid var(--border); color: var(--text);
+  }
+  .quick button:hover { border-color: var(--accent); color: var(--accent); }
+
+  /* how-it-works strip — so a first-time user knows what they're looking at */
+  .legend {
+    margin-top: 26px; background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 16px 18px;
+  }
+  .legend h3 { margin: 0 0 12px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.07em; color: var(--text-faint); font-weight: 600; }
+  .legend-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 14px; }
+  .legend-item { font-size: 12.5px; color: var(--text-dim); line-height: 1.55; }
+  .legend-item b { color: var(--text); display: block; margin-bottom: 2px; font-size: 12.5px; }
+
+  #toasts { position: fixed; top: 72px; right: 16px; z-index: 500;
+            display: flex; flex-direction: column; gap: 8px; max-width: 330px; }
   .toast {
-    background: var(--paper);
-    border: 1px solid var(--line-strong);
-    border-left: 4px solid var(--accent);
-    border-radius: 6px;
-    padding: 10px 14px;
-    font-size: 12.5px;
-    box-shadow: 0 4px 16px rgba(20,43,74,0.12);
-    animation: toast-in 0.2s ease-out;
+    background: var(--surface); border: 1px solid var(--border-strong);
+    border-left: 3px solid var(--accent); border-radius: 9px;
+    padding: 11px 13px; font-size: 12.5px; box-shadow: var(--shadow);
+    animation: slidein .22s ease-out;
   }
   .toast.p0 { border-left-color: var(--down); }
   .toast.p1 { border-left-color: var(--warn); }
-  .toast .toast-title {
-    font-weight: 700; font-family: var(--mono);
-    display: flex; justify-content: space-between; gap: 8px;
-  }
-  .toast .toast-body { color: var(--ink-soft); margin-top: 3px; }
-  @keyframes toast-in { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: translateX(0); } }
-
-  .container {
-    max-width: 1200px;
-    margin: 0 auto;
-    padding: 24px;
-  }
-
-  .addbar {
-    background: var(--paper);
-    border: 1px solid var(--line-strong);
-    border-radius: 8px;
-    padding: 14px 16px;
-    display: flex;
-    gap: 10px;
-    align-items: center;
-    flex-wrap: wrap;
-    margin-bottom: 20px;
-  }
-  .addbar label {
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--ink-faint);
-    font-weight: 600;
-  }
-  .addbar input, .addbar select {
-    font: inherit;
-    padding: 8px 10px;
-    border: 1px solid var(--line-strong);
-    border-radius: 5px;
-    background: var(--bg);
-    color: var(--ink);
-    min-width: 0;
-  }
-  .addbar input[name=symbol] { width: 140px; text-transform: uppercase; font-family: var(--mono); font-weight: 500; }
-  .addbar .grow { flex: 1; }
-  .btn {
-    padding: 8px 14px;
-    border: 1px solid transparent;
-    border-radius: 5px;
-    font-size: 13px;
-    font-weight: 600;
-    cursor: pointer;
-    background: var(--accent);
-    color: white;
-    white-space: nowrap;
-  }
-  .btn:hover { filter: brightness(1.05); }
-  .btn.secondary {
-    background: var(--paper);
-    color: var(--ink);
-    border-color: var(--line-strong);
-  }
-  .btn.secondary:hover { background: var(--bg); }
-  .btn.tiny { padding: 4px 8px; font-size: 11px; font-weight: 500; }
-  .btn.danger { color: var(--down); border-color: var(--down-soft); background: var(--paper); }
-  .btn.danger:hover { background: var(--down-soft); }
+  .toast-t { display: flex; justify-content: space-between; gap: 10px;
+             font-family: "JetBrains Mono", monospace; font-weight: 600; }
+  .toast-b { color: var(--text-dim); margin-top: 3px; font-size: 11.5px; }
+  @keyframes slidein { from { opacity:0; transform: translateX(14px);} to {opacity:1; transform:none;} }
 
   #status {
-    font-family: var(--mono);
-    font-size: 12px;
-    color: var(--ink-faint);
-    padding: 4px 10px;
-    background: var(--bg);
-    border-radius: 4px;
-    border: 1px solid var(--line);
-    min-height: 24px;
-    display: flex; align-items: center;
+    font-size: 11.5px; color: var(--text-faint); padding: 5px 10px;
+    border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border);
+    max-width: 340px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  #status.error { color: var(--down); background: var(--down-soft); border-color: var(--down); }
-  #status.busy { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
-  #status.ok    { color: var(--up); background: var(--up-soft); border-color: var(--up); }
+  #status.err { color: var(--down); border-color: var(--down); background: var(--down-bg); }
+  #status.ok  { color: var(--up);   border-color: var(--up);   background: var(--up-bg); }
 
-  .grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
-    gap: 14px;
+  @media (max-width: 720px) {
+    .topnav { padding: 0 12px; gap: 8px; }
+    #status { display: none; }
+    .brand-text .t2 { display: none; }
+    .page { padding: 16px 12px 50px; }
   }
-  .card {
-    background: var(--paper);
-    border: 1px solid var(--line-strong);
-    border-radius: 8px;
-    padding: 16px;
-    display: flex; flex-direction: column; gap: 10px;
-  }
-  .card.status-significant { border-left: 4px solid var(--warn); }
-  .card.status-nodata      { opacity: 0.75; }
-  .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
-  .card-symbol {
-    font-family: var(--mono); font-weight: 600; font-size: 15px;
-    letter-spacing: 0.02em;
-  }
-  .card-tag {
-    font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
-    color: var(--ink-faint); font-weight: 600;
-  }
-  .card-price {
-    font-family: var(--mono); font-variant-numeric: tabular-nums;
-    font-size: 24px; font-weight: 600; letter-spacing: -0.005em;
-  }
-  .card-meta {
-    display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
-  }
-  .chip {
-    display: inline-flex; align-items: center; gap: 4px;
-    font-family: var(--mono);
-    font-size: 10.5px; font-weight: 500;
-    padding: 2px 8px; border-radius: 100px;
-    white-space: nowrap;
-  }
-  .chip::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
-  .chip.verified { background: var(--up-soft); color: var(--up); }
-  .chip.best     { background: var(--warn-soft); color: var(--warn); }
-  .chip.unconf   { background: var(--down-soft); color: var(--down); }
-  .chip.plain    { background: var(--bg); color: var(--ink-faint); border: 1px solid var(--line); }
-  .chip.plain::before { display: none; }
-
-  .diff {
-    background: var(--bg);
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 10px 12px;
-    font-size: 13px;
-  }
-  .diff.significant { background: var(--warn-soft); border-color: var(--warn); }
-  .diff.no-data { background: var(--down-soft); border-color: var(--down); }
-  .diff.no-data .diff-title { color: var(--down); }
-  .diff .diff-title {
-    font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
-    color: var(--ink-faint); font-weight: 600; margin-bottom: 4px;
-  }
-  .diff.significant .diff-title { color: var(--warn); }
-  .diff .diff-body { color: var(--ink); }
-  .diff .diff-detail {
-    font-family: var(--mono); font-size: 11.5px;
-    color: var(--ink-soft); margin-top: 4px;
-  }
-  .num { font-variant-numeric: tabular-nums; }
-  .card-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; }
-
-  details.drill {
-    background: var(--bg);
-    border: 1px dashed var(--line-strong);
-    border-radius: 5px;
-    padding: 8px 10px;
-    font-size: 12px;
-  }
-  details.drill summary {
-    cursor: pointer;
-    color: var(--ink-faint);
-    font-weight: 500;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    list-style: none;
-  }
-  details.drill summary::-webkit-details-marker { display: none; }
-  details.drill summary::after { content: " ▸"; }
-  details.drill[open] summary::after { content: " ▾"; }
-  details.drill .readings {
-    margin-top: 8px;
-    display: grid; grid-template-columns: 1fr auto auto; gap: 4px 12px;
-    font-family: var(--mono); font-size: 11.5px;
-  }
-  details.drill .readings .src { color: var(--ink); }
-  details.drill .readings .val { color: var(--ink-soft); text-align: right; }
-  details.drill .readings .err { color: var(--down); font-size: 10.5px; }
-
-  .narration-box {
-    margin-top: 8px;
-    background: var(--bg);
-    border: 1px solid var(--line-strong);
-    border-radius: 6px;
-    padding: 10px 12px;
-    font-size: 12.5px;
-  }
-  .narration-badge {
-    display: inline-block;
-    font-family: var(--mono);
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    color: var(--mono-chip, #5A4A9C);
-    background: var(--accent-soft);
-    padding: 2px 8px;
-    border-radius: 100px;
-    margin-bottom: 6px;
-  }
-  .narration-text { color: var(--ink); line-height: 1.5; }
-  .narration-sources { margin-top: 6px; font-size: 11.5px; color: var(--ink-faint); }
-  .narration-sources a { color: var(--accent); }
-  .narration-error { margin-top: 6px; font-family: var(--mono); font-size: 10.5px; color: var(--down); }
-
-  .empty {
-    text-align: center;
-    padding: 60px 20px;
-    color: var(--ink-faint);
-  }
-  .empty h2 { color: var(--ink); font-weight: 600; font-size: 16px; margin: 0 0 6px; }
-  .empty p { margin: 0; font-size: 13.5px; }
-
-  .doc-link {
-    font-size: 11px; color: var(--ink-faint);
-    display: inline-flex; gap: 6px; align-items: center;
-  }
-  .doc-link a { color: var(--accent); font-weight: 500; }
 </style>
 </head>
 <body>
 
-<header class="topbar">
+<nav class="topnav">
   <div class="brand">
-    <div class="eyebrow">Code, by Groww · 2026</div>
-    <h1>Smart Market Watchlist</h1>
-  </div>
-  <div class="actions">
-    <div class="who">
-      <span class="ws-dot" id="ws-dot"></span>
-      <span id="who-email">not signed in</span>
-      <button id="btn-logout" hidden>log out</button>
+    <div class="brand-mark">W</div>
+    <div class="brand-text">
+      <span class="t1">Smart Watchlist</span>
+      <span class="t2">Code, by Groww 2026</span>
     </div>
-    <div id="status">ready.</div>
-    <button class="btn secondary" id="btn-refresh">Refresh watchlist</button>
-    <button class="btn" id="btn-poll-all">Poll all now</button>
   </div>
-</header>
 
-<div id="toast-stack"></div>
+  <div class="nav-spacer"></div>
 
-<div class="container">
+  <div class="nav-right">
+    <div id="status">starting…</div>
+    <button class="icon-btn" id="btn-theme" title="Switch between dark and light theme" aria-label="Toggle theme">◐</button>
+    <button class="icon-btn" id="btn-refresh" title="Reload your watchlist" aria-label="Refresh">↻</button>
+    <div class="profile">
+      <button class="avatar" id="btn-profile" title="Your account" aria-label="Account menu">–</button>
+      <div class="profile-menu" id="profile-menu" hidden>
+        <div class="profile-head">
+          <div class="pm-label">Signed in as</div>
+          <div class="pm-email" id="pm-email">—</div>
+        </div>
+        <div class="profile-row">
+          <span>Live updates</span>
+          <span class="conn"><span class="dot" id="ws-dot"></span><span id="ws-text">connecting</span></span>
+        </div>
+        <div class="profile-row">
+          <span>Price sources</span>
+          <span class="mono" id="pm-sources" style="font-size:11px">—</span>
+        </div>
+        <button class="pm-action" id="btn-logout">Log out</button>
+      </div>
+    </div>
+  </div>
+</nav>
 
-  <form class="addbar" id="add-form">
-    <label title="NSE / BSE listed Indian equities only">Symbol</label>
-    <input name="symbol" placeholder="TCS" required maxlength="20" autocomplete="off"
-           title="Indian equities only (NSE/BSE) — e.g. TCS, RELIANCE, INFY, HDFCBANK, SBIN">
-    <label>Intent</label>
-    <select name="intent_tag">
-      <option value="">(none)</option>
-      <option value="watching_to_buy">watching to buy</option>
-      <option value="own_it">own it</option>
-      <option value="earnings_watch">earnings watch</option>
-      <option value="just_curious">just curious</option>
-    </select>
-    <div class="grow"></div>
-    <button class="btn" type="submit">Add &amp; poll</button>
-  </form>
+<div id="toasts"></div>
+
+<div class="page">
+
+  <div class="page-head">
+    <h1>Your watchlist</h1>
+    <p>Track Indian stocks and see what <b>actually</b> changed since you last looked — not just today's red or green number.</p>
+  </div>
+
+  <div class="search-wrap">
+    <div class="search-box">
+      <span class="s-icon">⌕</span>
+      <input id="search" type="text" autocomplete="off" spellcheck="false"
+             placeholder="Search a company or ticker — try HDFC, tata, or bank">
+      <button class="btn primary tiny" id="btn-add" disabled>Add</button>
+    </div>
+    <div class="search-hint">Indian equities only (NSE / BSE listed). Global tickers like AAPL or SAP aren't covered.</div>
+    <div class="suggestions" id="suggestions" hidden></div>
+  </div>
 
   <div id="grid" class="grid"></div>
+
   <div id="empty" class="empty" hidden>
-    <h2>No symbols yet.</h2>
-    <p>Try adding <b>TCS</b>, <b>RELIANCE</b>, <b>INFY</b>, <b>HDFCBANK</b>, or <b>SBIN</b>.</p>
-    <p style="margin-top:6px; font-size:12.5px;">Indian equities only — NSE/BSE listed. Global tickers like <code>SAP</code> or <code>AAPL</code> won't resolve.</p>
+    <h2>Nothing on your watchlist yet</h2>
+    <p>Add a stock and we'll start tracking it. When something moves in a way that's
+       genuinely unusual <i>for that stock</i>, it'll show up here — and you'll get a live alert.</p>
+    <div class="quick" id="quick-adds"></div>
   </div>
 
-  <p class="doc-link" style="margin-top:28px">
-    Architecture blueprint:
-    <a href="https://claude.ai/code/artifact/c629a769-6ed1-4d93-812a-efb7449a9286" target="_blank" rel="noopener">
-      claude.ai/code/artifact/c629a769
-    </a>
-  </p>
+  <div class="legend">
+    <h3>What you're looking at</h3>
+    <div class="legend-grid">
+      <div class="legend-item">
+        <b>Last traded price</b>
+        The most recent price, cross-checked across independent sources before we show it.
+      </div>
+      <div class="legend-item">
+        <b>verified / best-available</b>
+        How many sources confirmed that price. <i>verified</i> means at least two agreed.
+      </div>
+      <div class="legend-item">
+        <b>Since your last visit</b>
+        What changed while you were away — not since market open. Your own checkpoint.
+      </div>
+      <div class="legend-item">
+        <b>Unusual move</b>
+        Measured against how much <i>this</i> stock normally moves, so a 2% swing means
+        different things for a steady bluechip and a volatile smallcap.
+      </div>
+    </div>
+  </div>
 </div>
 
 <script>
 const API = "/api";
-const $ = (sel, root = document) => root.querySelector(sel);
+const $ = (s, r = document) => r.querySelector(s);
 const el = (tag, props = {}, ...kids) => {
   const n = Object.assign(document.createElement(tag), props);
-  for (const k of kids) n.append(k?.nodeType ? k : document.createTextNode(k ?? ""));
+  for (const k of kids) if (k != null) n.append(k?.nodeType ? k : document.createTextNode(k));
   return n;
 };
 
-const status = $("#status");
-const setStatus = (msg, cls = "") => {
-  status.textContent = msg;
-  status.className = cls;
+/* ---------- resilient storage (localStorage throws in private mode) ---------- */
+const _mem = {};
+const store = {
+  get(k) { try { return localStorage.getItem(k); } catch { return _mem[k] ?? null; } },
+  set(k, v) { try { localStorage.setItem(k, v); } catch { _mem[k] = v; } },
+  del(k) { try { localStorage.removeItem(k); } catch { delete _mem[k]; } },
 };
 
-// ---- auth ------------------------------------------------------------
-// Real JWT auth (see backend/app/auth.py) with a zero-friction entry point:
-// on first load we call /api/auth/demo-login, which gets-or-creates a fixed
-// account and returns a token through the exact same issuance path a real
-// register/login uses. The token is a genuine, verifiable JWT — not a bypass.
-const TOKEN_KEY = "wl_token";
-const EMAIL_KEY = "wl_email";
+/* ---------- theme ---------- */
+const THEME_KEY = "wl_theme";
+function applyTheme(t) {
+  document.documentElement.setAttribute("data-theme", t);
+  store.set(THEME_KEY, t);
+  $("#btn-theme").textContent = t === "dark" ? "◐" : "◑";
+  $("#btn-theme").title = t === "dark" ? "Switch to light theme" : "Switch to dark theme";
+}
+applyTheme(store.get(THEME_KEY) || "dark");
+$("#btn-theme").onclick = () =>
+  applyTheme(document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark");
 
-// localStorage is NOT always available: private browsing, blocked site
-// data, and some embedded contexts make the accessor itself THROW rather
-// than return null. Unguarded access killed the whole app (blank page,
-// "not signed in", no way to recover). Every access is wrapped, with an
-// in-memory fallback so the session still works for the current tab —
-// it just won't survive a reload. Degraded, not dead.
-const _memStore = {};
-function storeGet(k) {
-  try { return localStorage.getItem(k); }
-  catch { return _memStore[k] ?? null; }
-}
-function storeSet(k, v) {
-  try { localStorage.setItem(k, v); }
-  catch { _memStore[k] = v; }
-}
-function storeDel(k) {
-  try { localStorage.removeItem(k); }
-  catch { delete _memStore[k]; }
-}
+/* ---------- status ---------- */
+const setStatus = (m, c = "") => { const s = $("#status"); s.textContent = m; s.className = c; };
 
-function getToken() { return storeGet(TOKEN_KEY); }
+/* ---------- auth ---------- */
+const TOKEN_KEY = "wl_token", EMAIL_KEY = "wl_email";
+const getToken = () => store.get(TOKEN_KEY);
+
 function setSession(token, email) {
-  storeSet(TOKEN_KEY, token);
-  storeSet(EMAIL_KEY, email);
-  $("#who-email").textContent = email;
-  $("#btn-logout").hidden = false;
+  store.set(TOKEN_KEY, token); store.set(EMAIL_KEY, email);
+  $("#pm-email").textContent = email;
+  $("#btn-profile").textContent = (email || "?").trim()[0].toUpperCase();
 }
-function clearSession() {
-  storeDel(TOKEN_KEY);
-  storeDel(EMAIL_KEY);
-}
+function clearSession() { store.del(TOKEN_KEY); store.del(EMAIL_KEY); }
 
 async function ensureSession() {
   const existing = getToken();
   if (existing) {
-    $("#who-email").textContent = storeGet(EMAIL_KEY) || "signed in";
-    $("#btn-logout").hidden = false;
+    const email = store.get(EMAIL_KEY) || "signed in";
+    $("#pm-email").textContent = email;
+    $("#btn-profile").textContent = email.trim()[0].toUpperCase();
     return existing;
   }
   const r = await fetch(API + "/auth/demo-login", { method: "POST" });
-  if (!r.ok) throw new Error("demo-login failed: " + r.status);
-  const data = await r.json();
-  setSession(data.access_token, data.email);
-  return data.access_token;
+  if (!r.ok) throw new Error("sign-in failed (" + r.status + ")");
+  const d = await r.json();
+  setSession(d.access_token, d.email);
+  return d.access_token;
 }
 
-$("#btn-logout").onclick = () => {
-  clearSession();
-  location.reload();
-};
-
 async function api(path, opts = {}) {
-  const token = getToken();
   const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
-  if (token) headers["Authorization"] = "Bearer " + token;
+  const t = getToken(); if (t) headers.Authorization = "Bearer " + t;
   const r = await fetch(API + path, { ...opts, headers });
   if (r.status === 401) {
-    // token expired/invalid — drop it and force a clean re-login on reload
-    clearSession();
-    setStatus("session expired — reloading to sign in again", "error");
-    setTimeout(() => location.reload(), 1200);
-    throw new Error("401 unauthorized");
+    clearSession(); setStatus("session expired — reloading", "err");
+    setTimeout(() => location.reload(), 1000);
+    throw new Error("unauthorized");
   }
   if (!r.ok) {
-    let detail = r.statusText;
-    try { detail = (await r.json()).detail || detail; } catch {}
-    throw new Error(`HTTP ${r.status}: ${detail}`);
+    let d = r.statusText; try { d = (await r.json()).detail || d; } catch {}
+    throw new Error(d);
   }
   return r.json();
 }
 
-// ---- live notifications (§08) -----------------------------------------
-function showToast(payload) {
-  const stack = $("#toast-stack");
-  const t = el("div", { className: "toast " + (payload.priority === "P0" ? "p0" : payload.priority === "P1" ? "p1" : "") });
-  const dir = payload.direction === "up" ? "+" : "-";
-  const pct = payload.price_before > 0
-    ? Math.abs((payload.price_after - payload.price_before) / payload.price_before * 100).toFixed(2)
-    : "?";
-  t.append(
-    el("div", { className: "toast-title" },
-      el("span", {}, payload.symbol),
-      el("span", {}, `${dir}${pct}%`),
-    ),
-    el("div", { className: "toast-body" },
-      `z=${payload.z_score}  confidence=${payload.confidence}  [${payload.priority}]`
-    ),
-  );
-  stack.prepend(t);
-  setTimeout(() => t.remove(), 9000);
-  while (stack.children.length > 4) stack.lastChild.remove();
-}
+/* ---------- profile menu ---------- */
+$("#btn-profile").onclick = (e) => {
+  e.stopPropagation();
+  const m = $("#profile-menu"); m.hidden = !m.hidden;
+};
+document.addEventListener("click", (e) => {
+  const m = $("#profile-menu");
+  if (!m.hidden && !m.contains(e.target) && e.target !== $("#btn-profile")) m.hidden = true;
+});
+$("#btn-logout").onclick = () => { clearSession(); location.reload(); };
 
-let ws = null;
-function connectNotifications(token) {
-  const proto = location.protocol === "https:" ? "wss:" : "ws:";
-  ws = new WebSocket(`${proto}//${location.host}/ws/notifications?token=${encodeURIComponent(token)}`);
-  ws.onopen = () => $("#ws-dot").classList.add("live");
-  ws.onclose = () => {
-    $("#ws-dot").classList.remove("live");
-    setTimeout(() => connectNotifications(token), 4000);   // reconnect
-  };
-  ws.onerror = () => ws.close();
-  ws.onmessage = (ev) => {
-    try {
-      const payload = JSON.parse(ev.data);
-      if (payload.type === "significant_event") {
-        showToast(payload);
-        refresh();
-      }
-    } catch {}
-  };
-}
+/* ---------- formatting ---------- */
+const fmtINR = v => v == null ? "—"
+  : "₹" + v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const fmtAge = s => s == null ? null
+  : s < 60 ? `${s.toFixed(0)}s ago` : s < 3600 ? `${(s/60).toFixed(0)}m ago` : `${(s/3600).toFixed(1)}h ago`;
 
-function tierChip(tier) {
-  if (tier === "verified")       return el("span", { className: "chip verified" }, "verified");
-  if (tier === "best_available") return el("span", { className: "chip best" }, "best-available");
-  return el("span", { className: "chip unconf" }, "unconfirmed");
-}
-
-function stalenessChip(secs) {
-  if (secs == null) return null;
-  const label = secs < 60 ? `${secs.toFixed(0)}s ago`
-              : secs < 3600 ? `${(secs/60).toFixed(0)}m ago`
-              : `${(secs/3600).toFixed(1)}h ago`;
-  const chip = el("span", { className: "chip plain" }, label);
-  return chip;
-}
-
-function fmtINR(v) {
-  if (v == null || Number.isNaN(v)) return "—";
-  return "₹" + v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
-const GENERATED_BY_LABEL = {
-  "groq-api": "AI-synthesized (Groq), cited below",
-  "anthropic-api": "AI-synthesized (Claude), cited below",
-  "headline-fallback": "headline lookup only — not AI-generated",
-  "no-news-found": "no news found — nothing to explain from",
+const TIER_TEXT = {
+  verified:       ["verified", "chip verified", "Confirmed by 2+ independent sources"],
+  best_available: ["best available", "chip best", "Only one source responded — treat with care"],
+  unconfirmed:    ["unconfirmed", "chip unconf", "No source could confirm this price"],
 };
 
-async function explainEvent(symbol, eventId, container) {
-  container.textContent = "asking the narrator...";
-  try {
-    const r = await api(`/stocks/${symbol}/events/${eventId}/narrate`, { method: "POST" });
-    container.innerHTML = "";
-    container.append(
-      el("div", { className: "narration-badge" }, GENERATED_BY_LABEL[r.generated_by] || r.generated_by),
-      el("div", { className: "narration-text" }, r.text),
-    );
-    if (r.sources && r.sources.length) {
-      const srcList = el("div", { className: "narration-sources" });
-      for (const s of r.sources) {
-        const a = el("a", { href: s.link, target: "_blank", rel: "noopener" }, s.title);
-        srcList.append(el("div", {}, "· ", a, ` (${s.publisher})`));
-      }
-      container.append(srcList);
-    }
-    if (r.error) {
-      container.append(el("div", { className: "narration-error" }, `note: ${r.error}`));
-    }
-  } catch (e) {
-    container.textContent = "explain failed: " + String(e);
+/* ---------- search / typeahead ---------- */
+let sugItems = [], sugIndex = -1, searchTimer = null;
+
+function renderSuggestions(items) {
+  const box = $("#suggestions");
+  box.innerHTML = "";
+  sugItems = items; sugIndex = -1;
+  if (!items.length) {
+    box.append(el("div", { className: "sug-empty" },
+      "No match in our catalogue. We cover 40 major NSE stocks — try HDFC, TCS, or RELIANCE."));
+    box.hidden = false;
+    return;
   }
+  items.forEach((it, i) => {
+    const b = el("button", { className: "sug", type: "button" },
+      el("span", { className: "sug-sym" }, it.symbol),
+      el("span", { className: "sug-name" }, it.name),
+      el("span", { className: "sug-sector" }, it.sector),
+    );
+    b.onclick = () => pick(it.symbol);
+    box.append(b);
+  });
+  box.hidden = false;
 }
 
-function renderDiff(item) {
-  const wrap = el("div", { className: "diff" + (item.status === "significant_change" ? " significant" : "") });
-  const title = el("div", { className: "diff-title" });
-  const body = el("div", { className: "diff-body" });
-  const detail = el("div", { className: "diff-detail" });
+function highlight(i) {
+  const btns = [...$("#suggestions").querySelectorAll(".sug")];
+  btns.forEach(b => b.classList.remove("active"));
+  if (btns[i]) { btns[i].classList.add("active"); sugIndex = i; }
+}
+
+function pick(symbol) {
+  $("#search").value = symbol;
+  $("#suggestions").hidden = true;
+  $("#btn-add").disabled = false;
+  addSymbol(symbol);
+}
+
+$("#search").addEventListener("input", (e) => {
+  const q = e.target.value.trim();
+  $("#btn-add").disabled = q.length === 0;
+  clearTimeout(searchTimer);
+  if (!q) { $("#suggestions").hidden = true; return; }
+  searchTimer = setTimeout(async () => {
+    try { renderSuggestions(await api(`/stocks/search?q=${encodeURIComponent(q)}`)); }
+    catch { $("#suggestions").hidden = true; }
+  }, 130);
+});
+
+$("#search").addEventListener("keydown", (e) => {
+  const box = $("#suggestions");
+  if (box.hidden) { if (e.key === "Enter") addSymbol($("#search").value.trim()); return; }
+  if (e.key === "ArrowDown") { e.preventDefault(); highlight(Math.min(sugIndex + 1, sugItems.length - 1)); }
+  else if (e.key === "ArrowUp") { e.preventDefault(); highlight(Math.max(sugIndex - 1, 0)); }
+  else if (e.key === "Enter") {
+    e.preventDefault();
+    pick(sugIndex >= 0 ? sugItems[sugIndex].symbol : $("#search").value.trim());
+  } else if (e.key === "Escape") box.hidden = true;
+});
+
+$("#btn-add").onclick = () => addSymbol($("#search").value.trim());
+document.addEventListener("click", e => {
+  if (!$(".search-wrap").contains(e.target)) $("#suggestions").hidden = true;
+});
+
+/* ---------- cards ---------- */
+function priceBlock(item) {
+  const wrap = el("div", {});
+  wrap.append(el("span", { className: "price-label" }, "Last traded price"));
+  const row = el("div", { className: "price-block" });
+  row.append(el("span", { className: "price-val" }, fmtINR(item.current_price)));
+  if (item.day_change_pct != null) {
+    const d = item.day_change_pct;
+    const cls = d > 0 ? "up" : d < 0 ? "down" : "flat";
+    const arrow = d > 0 ? "▲" : d < 0 ? "▼" : "•";
+    row.append(el("span", { className: "price-chg " + cls },
+      `${arrow} ${d > 0 ? "+" : ""}${d.toFixed(2)}%`));
+  }
+  wrap.append(row);
+  if (item.prev_close != null) {
+    wrap.append(el("div", { className: "prev-close" },
+      `vs previous close ${fmtINR(item.prev_close)}`));
+  }
+  return wrap;
+}
+
+function diffPanel(item) {
+  const p = el("div", { className: "panel" });
+  const t = el("div", { className: "panel-title" });
+  const b = el("div", { className: "panel-body" });
 
   if (item.status === "no_data_yet") {
-    wrap.className = "diff no-data";
-    title.textContent = "no confirmed data";
-    // The backend always explains WHY (not NSE-listed / sources down /
-    // never polled). Show that instead of a uselessly blank card.
-    body.textContent = item.data_issue
-      || "Symbol added but not yet polled. Click Poll now to fetch.";
+    p.className = "panel dead";
+    t.textContent = "no confirmed price";
+    b.textContent = item.data_issue || "Not polled yet — hit Refresh price.";
   } else if (item.status === "no_significant_change") {
-    title.textContent = "since your last visit";
-    body.textContent = "Nothing meaningful — no move crossed the significance threshold.";
+    t.textContent = "since your last visit";
+    b.textContent = "Nothing unusual — no move stood out from this stock's normal range.";
   } else {
-    title.textContent = `${item.event_count} significant event${item.event_count === 1 ? "" : "s"} since your last visit`;
-    const drift = item.net_drift_pct;
-    const driftS = drift != null ? `net drift ${drift >= 0 ? "+" : ""}${drift.toFixed(2)}%` : "";
-    body.textContent = driftS || "See details";
-    if (item.biggest_event) {
-      const b = item.biggest_event;
-      detail.textContent = `biggest: ${b.direction} ${b.return_pct >= 0 ? "+" : ""}${b.return_pct.toFixed(2)}% (z=${b.z_score.toFixed(2)}, vol×${b.volume_ratio.toFixed(2)}) — ${new Date(b.ts).toLocaleString()}`;
-    }
+    p.className = "panel attn";
+    t.textContent = `${item.event_count} unusual move${item.event_count === 1 ? "" : "s"} since your last visit`;
+    b.textContent = item.net_drift_pct != null
+      ? `Net ${item.net_drift_pct >= 0 ? "+" : ""}${item.net_drift_pct.toFixed(2)}% across those moves`
+      : "See details";
   }
-  wrap.append(title, body);
-  if (detail.textContent) wrap.append(detail);
+  p.append(t, b);
 
   if (item.biggest_event) {
-    const explainBtn = el("button", { className: "btn secondary tiny", style: "margin-top:8px" }, "Explain this move");
-    const resultBox = el("div", { className: "narration-box", hidden: true });
-    explainBtn.onclick = () => {
-      resultBox.hidden = false;
-      explainBtn.disabled = true;
-      explainEvent(item.symbol, item.biggest_event.id, resultBox).finally(() => { explainBtn.disabled = false; });
-    };
-    wrap.append(explainBtn, resultBox);
-  }
+    const e = item.biggest_event;
+    p.append(el("div", { className: "panel-detail" },
+      `biggest: ${e.return_pct >= 0 ? "+" : ""}${e.return_pct.toFixed(2)}% · ` +
+      `${Math.abs(e.z_score).toFixed(1)}× this stock's normal daily move · ` +
+      new Date(e.ts).toLocaleString()));
 
-  return wrap;
+    const btn = el("button", { className: "btn ghost tiny", style: "margin-top:9px" }, "Why did this happen?");
+    const box = el("div", { className: "narration", hidden: true });
+    btn.onclick = () => {
+      box.hidden = false; btn.disabled = true;
+      explain(item.symbol, e.id, box).finally(() => btn.disabled = false);
+    };
+    p.append(btn, box);
+  }
+  return p;
 }
 
-async function renderReadingsDrilldown(symbol, item) {
-  const wrap = el("details", { className: "drill" });
-  // Framed as a trust signal, not a debug dump. A user cares "how many
-  // independent sources agreed on this price" — not "per-source readings".
-  // The evidence underneath is identical; only the framing changed.
-  const okCount = item && item.tier === "verified" ? 2 : null;
-  const label = okCount
-    ? `price confirmed by ${okCount} independent sources`
-    : "how was this price confirmed?";
-  wrap.append(el("summary", {}, label));
-  wrap.append(el("div", { textContent: "loading..." }));
-  wrap.addEventListener("toggle", async () => {
-    if (!wrap.open || wrap.dataset.loaded) return;
-    wrap.dataset.loaded = "1";
-    try {
-      const rows = await api(`/stocks/${symbol}/source-readings?limit=6`);
-      wrap.querySelector("div").remove();
-      const table = el("div", { className: "readings" });
-      for (const r of rows) {
-        table.append(el("span", { className: "src" }, r.source));
-        if (r.error) {
-          table.append(el("span", { className: "err", style: "grid-column: span 2" }, r.error));
-        } else {
-          table.append(el("span", { className: "val" }, fmtINR(r.price)));
-          table.append(el("span", { className: "val" }, `${r.latency_ms.toFixed(0)}ms`));
-        }
-      }
-      wrap.append(table);
-    } catch (e) {
-      wrap.append(el("div", { textContent: "no readings yet — poll first" }));
+const GEN_BY = {
+  "groq-api": "AI-generated from the sources below",
+  "anthropic-api": "AI-generated from the sources below",
+  "headline-fallback": "Latest headline — not AI-generated",
+  "no-news-found": "No recent news found",
+};
+
+async function explain(symbol, eventId, box) {
+  box.textContent = "looking for news…";
+  try {
+    const r = await api(`/stocks/${symbol}/events/${eventId}/narrate`, { method: "POST" });
+    box.innerHTML = "";
+    box.append(
+      el("div", { className: "n-badge" }, GEN_BY[r.generated_by] || r.generated_by),
+      el("div", { className: "n-text" }, r.text),
+    );
+    if (r.sources?.length) {
+      const s = el("div", { className: "n-src" });
+      r.sources.forEach(x => s.append(
+        el("div", {}, "· ", el("a", { href: x.link, target: "_blank", rel: "noopener" }, x.title))));
+      box.append(s);
     }
+  } catch (e) { box.textContent = "Couldn't load an explanation: " + e.message; }
+}
+
+async function readingsDrill(item) {
+  const d = el("details", { className: "drill" });
+  const label = item.tier === "verified"
+    ? "price confirmed by 2 independent sources"
+    : "how was this price checked?";
+  d.append(el("summary", {}, label), el("div", { textContent: "…" }));
+  d.addEventListener("toggle", async () => {
+    if (!d.open || d.dataset.done) return;
+    d.dataset.done = "1";
+    try {
+      const rows = await api(`/stocks/${item.symbol}/source-readings?limit=6`);
+      d.querySelector("div").remove();
+      const list = el("div", { className: "readings" });
+      const seen = new Set();
+      for (const r of rows) {
+        if (seen.has(r.source)) continue;
+        seen.add(r.source);
+        list.append(el("div", { className: "reading" },
+          el("span", { className: "r-src" }, r.source),
+          r.error ? el("span", { className: "r-err" }, r.error)
+                  : el("span", { className: "r-val" }, `${fmtINR(r.price)} · ${r.latency_ms.toFixed(0)}ms`)));
+      }
+      d.append(list);
+    } catch { d.append(el("div", { textContent: "no readings yet" })); }
   });
-  return wrap;
+  return d;
 }
 
 async function renderCard(item) {
-  const statusClass = {
-    significant_change: "status-significant",
-    no_data_yet: "status-nodata",
-  }[item.status] || "";
+  const cls = item.status === "significant_change" ? "card attn"
+            : item.status === "no_data_yet" ? "card dead" : "card";
+  const card = el("div", { className: cls });
 
-  const card = el("div", { className: "card " + statusClass });
-
-  const head = el("div", { className: "card-head" });
+  const head = el("div", { className: "c-head" });
   head.append(
-    el("div", { className: "card-symbol" }, item.symbol),
-    item.intent_tag ? el("div", { className: "card-tag" }, item.intent_tag.replace(/_/g, " ")) : el("span"),
+    el("div", {},
+      el("div", { className: "c-sym" }, item.symbol),
+      el("div", { className: "c-name" }, item.company_name || item.sector || "—")),
+    item.intent_tag ? el("span", { className: "c-tag" }, item.intent_tag.replace(/_/g, " ")) : el("span"),
   );
   card.append(head);
 
-  const price = el("div", { className: "card-price" }, item.current_price != null ? fmtINR(item.current_price) : "—");
-  card.append(price);
+  if (item.current_price != null) card.append(priceBlock(item));
 
-  const meta = el("div", { className: "card-meta" });
-  meta.append(tierChip(item.tier));
-  meta.append(el("span", { className: "chip plain" }, `confidence ${item.confidence.toFixed(2)}`));
-  const st = stalenessChip(item.staleness_secs);
-  if (st) meta.append(st);
-  card.append(meta);
+  const chips = el("div", { className: "chips" });
+  const [txt, cn, tip] = TIER_TEXT[item.tier] || TIER_TEXT.unconfirmed;
+  chips.append(Object.assign(el("span", { className: cn }, txt), { title: tip }));
+  if (item.staleness_secs != null)
+    chips.append(el("span", { className: "chip plain", title: "When we last fetched this price" },
+      fmtAge(item.staleness_secs)));
+  card.append(chips);
 
-  card.append(renderDiff(item));
+  card.append(diffPanel(item));
+  card.append(await readingsDrill(item));
 
-  card.append(await renderReadingsDrilldown(item.symbol, item));
-
-  const actions = el("div", { className: "card-actions" });
-  const pollBtn = el("button", { className: "btn secondary tiny" }, "Poll now");
-  pollBtn.onclick = () => pollSymbol(item.symbol);
-  const delBtn = el("button", { className: "btn danger tiny" }, "Remove");
-  delBtn.onclick = () => removeItem(item.id, item.symbol);
-  actions.append(pollBtn, delBtn);
-  card.append(actions);
-
+  const acts = el("div", { className: "c-actions" });
+  const p = el("button", { className: "btn ghost tiny" }, "Refresh price");
+  p.onclick = () => pollSymbol(item.symbol);
+  const rm = el("button", { className: "btn danger tiny" }, "Remove");
+  rm.onclick = () => removeItem(item.id, item.symbol);
+  acts.append(p, rm);
+  card.append(acts);
   return card;
 }
 
+/* ---------- actions ---------- */
 async function refresh() {
-  setStatus("loading watchlist...", "busy");
   try {
     const items = await api("/watchlist");
     const grid = $("#grid");
     grid.innerHTML = "";
     $("#empty").hidden = items.length > 0;
     for (const it of items) grid.append(await renderCard(it));
-    setStatus(`${items.length} symbol${items.length === 1 ? "" : "s"} in watchlist. last_seen_at bumped.`, "ok");
-  } catch (e) {
-    setStatus(String(e), "error");
-  }
+    setStatus(items.length ? `${items.length} stock${items.length === 1 ? "" : "s"} tracked` : "watchlist empty", "");
+  } catch (e) { setStatus(e.message, "err"); }
+}
+
+async function addSymbol(symbol) {
+  symbol = (symbol || "").toUpperCase().trim();
+  if (!symbol) return;
+  setStatus(`adding ${symbol}…`);
+  try {
+    await api("/watchlist", { method: "POST", body: JSON.stringify({ symbol, intent_tag: null }) });
+    $("#search").value = ""; $("#btn-add").disabled = true; $("#suggestions").hidden = true;
+    await pollSymbol(symbol);
+  } catch (e) { setStatus(e.message, "err"); }
 }
 
 async function pollSymbol(symbol) {
-  setStatus(`polling ${symbol}...`, "busy");
+  setStatus(`fetching ${symbol}…`);
   try {
     const r = await api(`/dev/populate/${symbol}`, { method: "POST" });
     const ok = r.readings.filter(x => !x.error).length;
-    const tot = r.readings.length;
-    setStatus(
-      `${symbol}: ${ok}/${tot} sources OK, tier=${r.tier}, ${r.is_significant ? "SIGNIFICANT EVENT recorded" : `no event (${r.significance_reason})`}`,
-      r.is_significant ? "ok" : ""
-    );
+    setStatus(`${symbol}: ${ok}/${r.readings.length} sources agreed · ${r.tier.replace("_", " ")}`,
+      r.tier === "verified" ? "ok" : "");
     await refresh();
-  } catch (e) {
-    setStatus(String(e), "error");
-  }
-}
-
-async function pollAll() {
-  setStatus("polling all watchlist symbols...", "busy");
-  try {
-    const items = await api("/watchlist");
-    if (items.length === 0) { setStatus("watchlist is empty", ""); return; }
-    for (const it of items) {
-      await api(`/dev/populate/${it.symbol}`, { method: "POST" });
-    }
-    setStatus(`polled ${items.length} symbol${items.length === 1 ? "" : "s"}`, "ok");
-    await refresh();
-  } catch (e) {
-    setStatus(String(e), "error");
-  }
+  } catch (e) { setStatus(e.message, "err"); }
 }
 
 async function removeItem(id, symbol) {
-  if (!confirm(`Remove ${symbol} from watchlist?`)) return;
-  try {
-    await api(`/watchlist/${id}`, { method: "DELETE" });
-    await refresh();
-  } catch (e) {
-    setStatus(String(e), "error");
-  }
+  if (!confirm(`Remove ${symbol} from your watchlist?`)) return;
+  try { await api(`/watchlist/${id}`, { method: "DELETE" }); await refresh(); }
+  catch (e) { setStatus(e.message, "err"); }
 }
 
-$("#add-form").onsubmit = async (ev) => {
-  ev.preventDefault();
-  const fd = new FormData(ev.target);
-  const symbol = String(fd.get("symbol") || "").toUpperCase().trim();
-  const intent_tag = fd.get("intent_tag") || null;
-  if (!symbol) return;
-  setStatus(`adding ${symbol}...`, "busy");
-  try {
-    await api("/watchlist", {
-      method: "POST",
-      body: JSON.stringify({ symbol, intent_tag: intent_tag || null }),
-    });
-    ev.target.reset();
-    await pollSymbol(symbol);
-  } catch (e) {
-    setStatus(String(e), "error");
-  }
-};
-
 $("#btn-refresh").onclick = refresh;
-$("#btn-poll-all").onclick = pollAll;
 
+/* quick-add chips in the empty state */
+["HDFCBANK", "RELIANCE", "TCS", "INFY", "SBIN"].forEach(s => {
+  const b = el("button", {}, s);
+  b.onclick = () => addSymbol(s);
+  $("#quick-adds").append(b);
+});
+
+/* ---------- live notifications ---------- */
+function toast(p) {
+  const t = el("div", { className: "toast " + (p.priority === "P0" ? "p0" : p.priority === "P1" ? "p1" : "") });
+  const pct = p.price_before > 0
+    ? Math.abs((p.price_after - p.price_before) / p.price_before * 100).toFixed(2) : "?";
+  t.append(
+    el("div", { className: "toast-t" }, el("span", {}, p.symbol),
+      el("span", { style: `color:var(--${p.direction === "up" ? "up" : "down"})` },
+        `${p.direction === "up" ? "▲ +" : "▼ -"}${pct}%`)),
+    el("div", { className: "toast-b" }, `${Math.abs(p.z_score).toFixed(1)}× its normal daily move`),
+  );
+  $("#toasts").prepend(t);
+  setTimeout(() => t.remove(), 9000);
+  while ($("#toasts").children.length > 4) $("#toasts").lastChild.remove();
+}
+
+function connectWS(token) {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  const ws = new WebSocket(`${proto}//${location.host}/ws/notifications?token=${encodeURIComponent(token)}`);
+  ws.onopen = () => { $("#ws-dot").classList.add("live"); $("#ws-text").textContent = "connected"; };
+  ws.onclose = () => {
+    $("#ws-dot").classList.remove("live"); $("#ws-text").textContent = "reconnecting";
+    setTimeout(() => connectWS(token), 4000);
+  };
+  ws.onerror = () => ws.close();
+  ws.onmessage = (ev) => {
+    try {
+      const p = JSON.parse(ev.data);
+      if (p.type === "significant_event") { toast(p); refresh(); }
+    } catch {}
+  };
+}
+
+/* ---------- boot ---------- */
 (async function init() {
   try {
-    setStatus("signing in...", "busy");
+    setStatus("signing in…");
     const token = await ensureSession();
-    connectNotifications(token);
+    connectWS(token);
+    fetch(API + "/health").then(r => r.json())
+      .then(h => { $("#pm-sources").textContent = (h.sources || []).join(" + ") || "—"; })
+      .catch(() => {});
     await refresh();
-  } catch (e) {
-    setStatus(String(e), "error");
-  }
+  } catch (e) { setStatus(e.message, "err"); }
 })();
 </script>
 </body>

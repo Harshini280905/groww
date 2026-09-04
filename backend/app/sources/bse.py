@@ -88,8 +88,14 @@ _IMPERSONATE = "chrome124"
 
 
 def get_scrip_code(symbol: str) -> Optional[str]:
-    """Public helper — check whether we can talk to BSE for a given symbol."""
-    return _SCRIP_CODES.get(symbol.upper())
+    """Public helper — check whether we can talk to BSE for a given symbol.
+
+    Delegates to the shared catalog so search and resolution can never drift
+    apart: anything autocomplete offers is guaranteed to be fetchable here.
+    Falls back to the local map for symbols predating the catalog.
+    """
+    from ..catalog import get_scrip_code as catalog_scrip
+    return catalog_scrip(symbol) or _SCRIP_CODES.get(symbol.upper())
 
 
 class BSESource:

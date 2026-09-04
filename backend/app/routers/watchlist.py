@@ -10,13 +10,15 @@ Blueprint anchors:
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..auth import get_current_user
+from ..catalog import get as catalog_get
 from ..db import get_db
-from ..models import PriceTick, SignificantEventRow, SourceReadingRow, User, WatchlistItem
+from ..models import DailyBar, PriceTick, SignificantEventRow, SourceReadingRow, User, WatchlistItem
 from ..schemas import BiggestEventOut, DiffSummaryOut, WatchlistItemCreate
 
 router = APIRouter()
@@ -77,13 +79,36 @@ def _explain_missing_data(db: Session, symbol: str) -> str:
     return f"No usable price could be confirmed ({detail})."
 
 
+def _day_change(db: Session, symbol: str, current_price: float) -> tuple[Optional[float], Optional[float]]:
+    """(prev_close, day_change_pct) from the most recent stored daily bar.
+
+    This is what turns a bare "₹2,302.45" into "₹2,302.45, +1.2% today" —
+    a number with a reference point instead of a number floating in space.
+    """
+    if current_price <= 0:
+        return None, None
+    bar = (
+        db.query(DailyBar)
+        .filter_by(symbol=symbol)
+        .order_by(DailyBar.date.desc())
+        .first()
+    )
+    if bar is None or bar.close <= 0:
+        return None, None
+    return bar.close, round((current_price - bar.close) / bar.close * 100, 2)
+
+
 def _diff_summary(db: Session, item: WatchlistItem) -> DiffSummaryOut:
     tick = db.query(PriceTick).filter_by(symbol=item.symbol).first()
     now = datetime.now(timezone.utc)
+    inst = catalog_get(item.symbol)
+    name = inst.name if inst else None
+    sector = inst.sector if inst else None
 
     if tick is None:
         return DiffSummaryOut(
-            id=item.id, symbol=item.symbol, intent_tag=item.intent_tag,
+            id=item.id, symbol=item.symbol, company_name=name, sector=sector,
+            intent_tag=item.intent_tag,
             status="no_data_yet",
             data_issue=_explain_missing_data(db, item.symbol),
         )
@@ -92,7 +117,8 @@ def _diff_summary(db: Session, item: WatchlistItem) -> DiffSummaryOut:
     # rendering a silent, empty card.
     if tick.price <= 0 or tick.tier == "unconfirmed":
         return DiffSummaryOut(
-            id=item.id, symbol=item.symbol, intent_tag=item.intent_tag,
+            id=item.id, symbol=item.symbol, company_name=name, sector=sector,
+            intent_tag=item.intent_tag,
             current_price=tick.price if tick.price > 0 else None,
             tier=tick.tier, confidence=round(tick.confidence, 3),
             staleness_secs=round((now - _ensure_tz(tick.fetched_at)).total_seconds(), 1),
@@ -102,6 +128,7 @@ def _diff_summary(db: Session, item: WatchlistItem) -> DiffSummaryOut:
 
     fetched = _ensure_tz(tick.fetched_at)
     staleness = (now - fetched).total_seconds()
+    prev_close, day_change_pct = _day_change(db, item.symbol, tick.price)
 
     events = (
         db.query(SignificantEventRow)
@@ -115,10 +142,12 @@ def _diff_summary(db: Session, item: WatchlistItem) -> DiffSummaryOut:
 
     if not events:
         return DiffSummaryOut(
-            id=item.id, symbol=item.symbol, intent_tag=item.intent_tag,
+            id=item.id, symbol=item.symbol, company_name=name, sector=sector,
+            intent_tag=item.intent_tag,
             current_price=tick.price, tier=tick.tier,
             confidence=round(tick.confidence, 3),
             staleness_secs=round(staleness, 1),
+            prev_close=prev_close, day_change_pct=day_change_pct,
             status="no_significant_change",
         )
 
@@ -133,10 +162,12 @@ def _diff_summary(db: Session, item: WatchlistItem) -> DiffSummaryOut:
         if biggest.price_before > 0 else 0.0
     )
     return DiffSummaryOut(
-        id=item.id, symbol=item.symbol, intent_tag=item.intent_tag,
+        id=item.id, symbol=item.symbol, company_name=name, sector=sector,
+        intent_tag=item.intent_tag,
         current_price=tick.price, tier=tick.tier,
         confidence=round(tick.confidence, 3),
         staleness_secs=round(staleness, 1),
+        prev_close=prev_close, day_change_pct=day_change_pct,
         status="significant_change",
         event_count=len(events),
         net_drift_pct=round(net_drift, 2),

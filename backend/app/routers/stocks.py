@@ -8,16 +8,36 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
+from ..catalog import search as catalog_search
 from ..db import get_db
 from ..models import PriceTick, SignificantEventRow, SourceReadingRow
 from ..narrator import narrate_event
-from ..schemas import NarrationOut, NewsItemOut, SignificantEventOut, SourceReadingOut, StockLatestOut
+from ..schemas import (
+    InstrumentOut, NarrationOut, NewsItemOut, SignificantEventOut,
+    SourceReadingOut, StockLatestOut,
+)
 
 router = APIRouter()
 
 
 def _ensure_tz(dt: datetime) -> datetime:
     return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+@router.get("/search", response_model=list[InstrumentOut])
+def search_instruments(q: str = "", limit: int = 8):
+    """Typeahead over the instrument catalog.
+
+    Exists because making a user guess the exact NSE ticker is a bad
+    experience — "HDFC" should find HDFCBANK, "tata" should surface TCS and
+    TATAMOTORS. Unauthenticated: this is public reference data, not
+    user-specific.
+    """
+    results = catalog_search(q, limit=min(max(limit, 1), 20))
+    return [
+        InstrumentOut(symbol=i.symbol, name=i.name, sector=i.sector)
+        for i in results
+    ]
 
 
 @router.get("/{symbol}/latest", response_model=StockLatestOut)
