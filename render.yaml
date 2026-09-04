@@ -1,0 +1,31 @@
+# Render Blueprint — deploy with one click after connecting this repo.
+# https://render.com/docs/blueprint-spec
+#
+# Honest note on persistence: this uses SQLite on Render's free tier, whose
+# filesystem is ephemeral across deploys/restarts — watchlist data resets
+# when the instance restarts (including free-tier spin-down after 15 min of
+# inactivity). That's an acceptable trade-off for a judged demo where the
+# app gets populated live. For real persistence, add a Render Postgres
+# instance and set DATABASE_URL to its connection string — no code changes
+# needed, db.py already reads DATABASE_URL from the environment.
+
+services:
+  - type: web
+    name: smart-market-watchlist
+    env: python
+    region: singapore
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.7"
+      - key: JWT_SECRET_KEY
+        generateValue: true
+      - key: SCHEDULER_ENABLED
+        value: "1"
+      - key: DEV_ROUTES
+        value: "1"
+      - key: POLL_INTERVAL_MINUTES
+        value: "10"

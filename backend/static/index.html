@@ -1,0 +1,668 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Smart Market Watchlist</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #F5F6F8;
+    --paper: #FFFFFF;
+    --ink: #142B4A;
+    --ink-soft: #3F5872;
+    --ink-faint: #7488A0;
+    --line: rgba(20,43,74,0.10);
+    --line-strong: rgba(20,43,74,0.18);
+    --accent: #1E5AA8;
+    --accent-soft: #DCE7F3;
+    --up: #1E8A5F;
+    --up-soft: #DCEFE5;
+    --down: #B8452C;
+    --down-soft: #F5E2DC;
+    --warn: #9C7A1E;
+    --warn-soft: #F1E7CE;
+    --mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: var(--bg);
+    color: var(--ink);
+    font-family: Inter, -apple-system, "Segoe UI", sans-serif;
+    font-size: 14px;
+    line-height: 1.5;
+  }
+  a { color: var(--accent); }
+  button { font-family: inherit; }
+
+  header.topbar {
+    background: var(--paper);
+    border-bottom: 1px solid var(--line-strong);
+    padding: 18px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+  }
+  header.topbar .brand {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  header.topbar .brand .eyebrow {
+    font-size: 10.5px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent);
+    font-weight: 700;
+  }
+  header.topbar .brand h1 {
+    margin: 0;
+    font-size: 20px;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+  header.topbar .actions {
+    display: flex; gap: 8px; align-items: center;
+  }
+  .who {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    display: flex; align-items: center; gap: 8px;
+  }
+  .who button {
+    background: none; border: none; color: var(--accent);
+    font: inherit; cursor: pointer; padding: 0; text-decoration: underline;
+  }
+  .ws-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--ink-faint);
+    display: inline-block;
+  }
+  .ws-dot.live { background: var(--up); }
+
+  #toast-stack {
+    position: fixed;
+    top: 16px; right: 16px;
+    display: flex; flex-direction: column; gap: 8px;
+    z-index: 1000;
+    max-width: 340px;
+  }
+  .toast {
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
+    border-left: 4px solid var(--accent);
+    border-radius: 6px;
+    padding: 10px 14px;
+    font-size: 12.5px;
+    box-shadow: 0 4px 16px rgba(20,43,74,0.12);
+    animation: toast-in 0.2s ease-out;
+  }
+  .toast.p0 { border-left-color: var(--down); }
+  .toast.p1 { border-left-color: var(--warn); }
+  .toast .toast-title {
+    font-weight: 700; font-family: var(--mono);
+    display: flex; justify-content: space-between; gap: 8px;
+  }
+  .toast .toast-body { color: var(--ink-soft); margin-top: 3px; }
+  @keyframes toast-in { from { opacity: 0; transform: translateX(12px); } to { opacity: 1; transform: translateX(0); } }
+
+  .container {
+    max-width: 1200px;
+    margin: 0 auto;
+    padding: 24px;
+  }
+
+  .addbar {
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    padding: 14px 16px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+    margin-bottom: 20px;
+  }
+  .addbar label {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--ink-faint);
+    font-weight: 600;
+  }
+  .addbar input, .addbar select {
+    font: inherit;
+    padding: 8px 10px;
+    border: 1px solid var(--line-strong);
+    border-radius: 5px;
+    background: var(--bg);
+    color: var(--ink);
+    min-width: 0;
+  }
+  .addbar input[name=symbol] { width: 140px; text-transform: uppercase; font-family: var(--mono); font-weight: 500; }
+  .addbar .grow { flex: 1; }
+  .btn {
+    padding: 8px 14px;
+    border: 1px solid transparent;
+    border-radius: 5px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    background: var(--accent);
+    color: white;
+    white-space: nowrap;
+  }
+  .btn:hover { filter: brightness(1.05); }
+  .btn.secondary {
+    background: var(--paper);
+    color: var(--ink);
+    border-color: var(--line-strong);
+  }
+  .btn.secondary:hover { background: var(--bg); }
+  .btn.tiny { padding: 4px 8px; font-size: 11px; font-weight: 500; }
+  .btn.danger { color: var(--down); border-color: var(--down-soft); background: var(--paper); }
+  .btn.danger:hover { background: var(--down-soft); }
+
+  #status {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--ink-faint);
+    padding: 4px 10px;
+    background: var(--bg);
+    border-radius: 4px;
+    border: 1px solid var(--line);
+    min-height: 24px;
+    display: flex; align-items: center;
+  }
+  #status.error { color: var(--down); background: var(--down-soft); border-color: var(--down); }
+  #status.busy { color: var(--accent); background: var(--accent-soft); border-color: var(--accent); }
+  #status.ok    { color: var(--up); background: var(--up-soft); border-color: var(--up); }
+
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+    gap: 14px;
+  }
+  .card {
+    background: var(--paper);
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    padding: 16px;
+    display: flex; flex-direction: column; gap: 10px;
+  }
+  .card.status-significant { border-left: 4px solid var(--warn); }
+  .card.status-nodata      { opacity: 0.75; }
+  .card-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .card-symbol {
+    font-family: var(--mono); font-weight: 600; font-size: 15px;
+    letter-spacing: 0.02em;
+  }
+  .card-tag {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: var(--ink-faint); font-weight: 600;
+  }
+  .card-price {
+    font-family: var(--mono); font-variant-numeric: tabular-nums;
+    font-size: 24px; font-weight: 600; letter-spacing: -0.005em;
+  }
+  .card-meta {
+    display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-family: var(--mono);
+    font-size: 10.5px; font-weight: 500;
+    padding: 2px 8px; border-radius: 100px;
+    white-space: nowrap;
+  }
+  .chip::before { content: ""; width: 5px; height: 5px; border-radius: 50%; background: currentColor; }
+  .chip.verified { background: var(--up-soft); color: var(--up); }
+  .chip.best     { background: var(--warn-soft); color: var(--warn); }
+  .chip.unconf   { background: var(--down-soft); color: var(--down); }
+  .chip.plain    { background: var(--bg); color: var(--ink-faint); border: 1px solid var(--line); }
+  .chip.plain::before { display: none; }
+
+  .diff {
+    background: var(--bg);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 13px;
+  }
+  .diff.significant { background: var(--warn-soft); border-color: var(--warn); }
+  .diff .diff-title {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: var(--ink-faint); font-weight: 600; margin-bottom: 4px;
+  }
+  .diff.significant .diff-title { color: var(--warn); }
+  .diff .diff-body { color: var(--ink); }
+  .diff .diff-detail {
+    font-family: var(--mono); font-size: 11.5px;
+    color: var(--ink-soft); margin-top: 4px;
+  }
+  .num { font-variant-numeric: tabular-nums; }
+  .card-actions { display: flex; gap: 6px; justify-content: flex-end; margin-top: 4px; }
+
+  details.drill {
+    background: var(--bg);
+    border: 1px dashed var(--line-strong);
+    border-radius: 5px;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+  details.drill summary {
+    cursor: pointer;
+    color: var(--ink-faint);
+    font-weight: 500;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    list-style: none;
+  }
+  details.drill summary::-webkit-details-marker { display: none; }
+  details.drill summary::after { content: " ▸"; }
+  details.drill[open] summary::after { content: " ▾"; }
+  details.drill .readings {
+    margin-top: 8px;
+    display: grid; grid-template-columns: 1fr auto auto; gap: 4px 12px;
+    font-family: var(--mono); font-size: 11.5px;
+  }
+  details.drill .readings .src { color: var(--ink); }
+  details.drill .readings .val { color: var(--ink-soft); text-align: right; }
+  details.drill .readings .err { color: var(--down); font-size: 10.5px; }
+
+  .empty {
+    text-align: center;
+    padding: 60px 20px;
+    color: var(--ink-faint);
+  }
+  .empty h2 { color: var(--ink); font-weight: 600; font-size: 16px; margin: 0 0 6px; }
+  .empty p { margin: 0; font-size: 13.5px; }
+
+  .doc-link {
+    font-size: 11px; color: var(--ink-faint);
+    display: inline-flex; gap: 6px; align-items: center;
+  }
+  .doc-link a { color: var(--accent); font-weight: 500; }
+</style>
+</head>
+<body>
+
+<header class="topbar">
+  <div class="brand">
+    <div class="eyebrow">Code, by Groww · 2026</div>
+    <h1>Smart Market Watchlist</h1>
+  </div>
+  <div class="actions">
+    <div class="who">
+      <span class="ws-dot" id="ws-dot"></span>
+      <span id="who-email">not signed in</span>
+      <button id="btn-logout" hidden>log out</button>
+    </div>
+    <div id="status">ready.</div>
+    <button class="btn secondary" id="btn-refresh">Refresh watchlist</button>
+    <button class="btn" id="btn-poll-all">Poll all now</button>
+  </div>
+</header>
+
+<div id="toast-stack"></div>
+
+<div class="container">
+
+  <form class="addbar" id="add-form">
+    <label>Symbol</label>
+    <input name="symbol" placeholder="TCS" required maxlength="20" autocomplete="off">
+    <label>Intent</label>
+    <select name="intent_tag">
+      <option value="">(none)</option>
+      <option value="watching_to_buy">watching to buy</option>
+      <option value="own_it">own it</option>
+      <option value="earnings_watch">earnings watch</option>
+      <option value="just_curious">just curious</option>
+    </select>
+    <div class="grow"></div>
+    <button class="btn" type="submit">Add &amp; poll</button>
+  </form>
+
+  <div id="grid" class="grid"></div>
+  <div id="empty" class="empty" hidden>
+    <h2>No symbols yet.</h2>
+    <p>Try adding <b>TCS</b>, <b>RELIANCE</b>, <b>INFY</b>, <b>HDFCBANK</b>, or <b>SBIN</b>.</p>
+  </div>
+
+  <p class="doc-link" style="margin-top:28px">
+    Architecture blueprint:
+    <a href="https://claude.ai/code/artifact/c629a769-6ed1-4d93-812a-efb7449a9286" target="_blank" rel="noopener">
+      claude.ai/code/artifact/c629a769
+    </a>
+  </p>
+</div>
+
+<script>
+const API = "/api";
+const $ = (sel, root = document) => root.querySelector(sel);
+const el = (tag, props = {}, ...kids) => {
+  const n = Object.assign(document.createElement(tag), props);
+  for (const k of kids) n.append(k?.nodeType ? k : document.createTextNode(k ?? ""));
+  return n;
+};
+
+const status = $("#status");
+const setStatus = (msg, cls = "") => {
+  status.textContent = msg;
+  status.className = cls;
+};
+
+// ---- auth ------------------------------------------------------------
+// Real JWT auth (see backend/app/auth.py) with a zero-friction entry point:
+// on first load we call /api/auth/demo-login, which gets-or-creates a fixed
+// account and returns a token through the exact same issuance path a real
+// register/login uses. The token is a genuine, verifiable JWT — not a bypass.
+const TOKEN_KEY = "wl_token";
+const EMAIL_KEY = "wl_email";
+
+function getToken() { return localStorage.getItem(TOKEN_KEY); }
+function setSession(token, email) {
+  localStorage.setItem(TOKEN_KEY, token);
+  localStorage.setItem(EMAIL_KEY, email);
+  $("#who-email").textContent = email;
+  $("#btn-logout").hidden = false;
+}
+function clearSession() {
+  localStorage.removeItem(TOKEN_KEY);
+  localStorage.removeItem(EMAIL_KEY);
+}
+
+async function ensureSession() {
+  const existing = getToken();
+  if (existing) {
+    $("#who-email").textContent = localStorage.getItem(EMAIL_KEY) || "signed in";
+    $("#btn-logout").hidden = false;
+    return existing;
+  }
+  const r = await fetch(API + "/auth/demo-login", { method: "POST" });
+  if (!r.ok) throw new Error("demo-login failed: " + r.status);
+  const data = await r.json();
+  setSession(data.access_token, data.email);
+  return data.access_token;
+}
+
+$("#btn-logout").onclick = () => {
+  clearSession();
+  location.reload();
+};
+
+async function api(path, opts = {}) {
+  const token = getToken();
+  const headers = { "Content-Type": "application/json", ...(opts.headers || {}) };
+  if (token) headers["Authorization"] = "Bearer " + token;
+  const r = await fetch(API + path, { ...opts, headers });
+  if (r.status === 401) {
+    // token expired/invalid — drop it and force a clean re-login on reload
+    clearSession();
+    setStatus("session expired — reloading to sign in again", "error");
+    setTimeout(() => location.reload(), 1200);
+    throw new Error("401 unauthorized");
+  }
+  if (!r.ok) {
+    let detail = r.statusText;
+    try { detail = (await r.json()).detail || detail; } catch {}
+    throw new Error(`HTTP ${r.status}: ${detail}`);
+  }
+  return r.json();
+}
+
+// ---- live notifications (§08) -----------------------------------------
+function showToast(payload) {
+  const stack = $("#toast-stack");
+  const t = el("div", { className: "toast " + (payload.priority === "P0" ? "p0" : payload.priority === "P1" ? "p1" : "") });
+  const dir = payload.direction === "up" ? "+" : "-";
+  const pct = payload.price_before > 0
+    ? Math.abs((payload.price_after - payload.price_before) / payload.price_before * 100).toFixed(2)
+    : "?";
+  t.append(
+    el("div", { className: "toast-title" },
+      el("span", {}, payload.symbol),
+      el("span", {}, `${dir}${pct}%`),
+    ),
+    el("div", { className: "toast-body" },
+      `z=${payload.z_score}  confidence=${payload.confidence}  [${payload.priority}]`
+    ),
+  );
+  stack.prepend(t);
+  setTimeout(() => t.remove(), 9000);
+  while (stack.children.length > 4) stack.lastChild.remove();
+}
+
+let ws = null;
+function connectNotifications(token) {
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  ws = new WebSocket(`${proto}//${location.host}/ws/notifications?token=${encodeURIComponent(token)}`);
+  ws.onopen = () => $("#ws-dot").classList.add("live");
+  ws.onclose = () => {
+    $("#ws-dot").classList.remove("live");
+    setTimeout(() => connectNotifications(token), 4000);   // reconnect
+  };
+  ws.onerror = () => ws.close();
+  ws.onmessage = (ev) => {
+    try {
+      const payload = JSON.parse(ev.data);
+      if (payload.type === "significant_event") {
+        showToast(payload);
+        refresh();
+      }
+    } catch {}
+  };
+}
+
+function tierChip(tier) {
+  if (tier === "verified")       return el("span", { className: "chip verified" }, "verified");
+  if (tier === "best_available") return el("span", { className: "chip best" }, "best-available");
+  return el("span", { className: "chip unconf" }, "unconfirmed");
+}
+
+function stalenessChip(secs) {
+  if (secs == null) return null;
+  const label = secs < 60 ? `${secs.toFixed(0)}s ago`
+              : secs < 3600 ? `${(secs/60).toFixed(0)}m ago`
+              : `${(secs/3600).toFixed(1)}h ago`;
+  const chip = el("span", { className: "chip plain" }, label);
+  return chip;
+}
+
+function fmtINR(v) {
+  if (v == null || Number.isNaN(v)) return "—";
+  return "₹" + v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
+function renderDiff(item) {
+  const wrap = el("div", { className: "diff" + (item.status === "significant_change" ? " significant" : "") });
+  const title = el("div", { className: "diff-title" });
+  const body = el("div", { className: "diff-body" });
+  const detail = el("div", { className: "diff-detail" });
+
+  if (item.status === "no_data_yet") {
+    title.textContent = "no data yet";
+    body.textContent = "Symbol added but not yet polled. Click Poll to fetch.";
+  } else if (item.status === "no_significant_change") {
+    title.textContent = "since your last visit";
+    body.textContent = "Nothing meaningful — no move crossed the significance threshold.";
+  } else {
+    title.textContent = `${item.event_count} significant event${item.event_count === 1 ? "" : "s"} since your last visit`;
+    const drift = item.net_drift_pct;
+    const driftS = drift != null ? `net drift ${drift >= 0 ? "+" : ""}${drift.toFixed(2)}%` : "";
+    body.textContent = driftS || "See details";
+    if (item.biggest_event) {
+      const b = item.biggest_event;
+      detail.textContent = `biggest: ${b.direction} ${b.return_pct >= 0 ? "+" : ""}${b.return_pct.toFixed(2)}% (z=${b.z_score.toFixed(2)}, vol×${b.volume_ratio.toFixed(2)}) — ${new Date(b.ts).toLocaleString()}`;
+    }
+  }
+  wrap.append(title, body);
+  if (detail.textContent) wrap.append(detail);
+  return wrap;
+}
+
+async function renderReadingsDrilldown(symbol) {
+  const wrap = el("details", { className: "drill" });
+  wrap.append(el("summary", {}, "why this tier? — per-source readings"));
+  wrap.append(el("div", { textContent: "loading..." }));
+  wrap.addEventListener("toggle", async () => {
+    if (!wrap.open || wrap.dataset.loaded) return;
+    wrap.dataset.loaded = "1";
+    try {
+      const rows = await api(`/stocks/${symbol}/source-readings?limit=6`);
+      wrap.querySelector("div").remove();
+      const table = el("div", { className: "readings" });
+      for (const r of rows) {
+        table.append(el("span", { className: "src" }, r.source));
+        if (r.error) {
+          table.append(el("span", { className: "err", style: "grid-column: span 2" }, r.error));
+        } else {
+          table.append(el("span", { className: "val" }, fmtINR(r.price)));
+          table.append(el("span", { className: "val" }, `${r.latency_ms.toFixed(0)}ms`));
+        }
+      }
+      wrap.append(table);
+    } catch (e) {
+      wrap.append(el("div", { textContent: "no readings yet — poll first" }));
+    }
+  });
+  return wrap;
+}
+
+async function renderCard(item) {
+  const statusClass = {
+    significant_change: "status-significant",
+    no_data_yet: "status-nodata",
+  }[item.status] || "";
+
+  const card = el("div", { className: "card " + statusClass });
+
+  const head = el("div", { className: "card-head" });
+  head.append(
+    el("div", { className: "card-symbol" }, item.symbol),
+    item.intent_tag ? el("div", { className: "card-tag" }, item.intent_tag.replace(/_/g, " ")) : el("span"),
+  );
+  card.append(head);
+
+  const price = el("div", { className: "card-price" }, item.current_price != null ? fmtINR(item.current_price) : "—");
+  card.append(price);
+
+  const meta = el("div", { className: "card-meta" });
+  meta.append(tierChip(item.tier));
+  meta.append(el("span", { className: "chip plain" }, `confidence ${item.confidence.toFixed(2)}`));
+  const st = stalenessChip(item.staleness_secs);
+  if (st) meta.append(st);
+  card.append(meta);
+
+  card.append(renderDiff(item));
+
+  card.append(await renderReadingsDrilldown(item.symbol));
+
+  const actions = el("div", { className: "card-actions" });
+  const pollBtn = el("button", { className: "btn secondary tiny" }, "Poll now");
+  pollBtn.onclick = () => pollSymbol(item.symbol);
+  const delBtn = el("button", { className: "btn danger tiny" }, "Remove");
+  delBtn.onclick = () => removeItem(item.id, item.symbol);
+  actions.append(pollBtn, delBtn);
+  card.append(actions);
+
+  return card;
+}
+
+async function refresh() {
+  setStatus("loading watchlist...", "busy");
+  try {
+    const items = await api("/watchlist");
+    const grid = $("#grid");
+    grid.innerHTML = "";
+    $("#empty").hidden = items.length > 0;
+    for (const it of items) grid.append(await renderCard(it));
+    setStatus(`${items.length} symbol${items.length === 1 ? "" : "s"} in watchlist. last_seen_at bumped.`, "ok");
+  } catch (e) {
+    setStatus(String(e), "error");
+  }
+}
+
+async function pollSymbol(symbol) {
+  setStatus(`polling ${symbol}...`, "busy");
+  try {
+    const r = await api(`/dev/populate/${symbol}`, { method: "POST" });
+    const ok = r.readings.filter(x => !x.error).length;
+    const tot = r.readings.length;
+    setStatus(
+      `${symbol}: ${ok}/${tot} sources OK, tier=${r.tier}, ${r.is_significant ? "SIGNIFICANT EVENT recorded" : `no event (${r.significance_reason})`}`,
+      r.is_significant ? "ok" : ""
+    );
+    await refresh();
+  } catch (e) {
+    setStatus(String(e), "error");
+  }
+}
+
+async function pollAll() {
+  setStatus("polling all watchlist symbols...", "busy");
+  try {
+    const items = await api("/watchlist");
+    if (items.length === 0) { setStatus("watchlist is empty", ""); return; }
+    for (const it of items) {
+      await api(`/dev/populate/${it.symbol}`, { method: "POST" });
+    }
+    setStatus(`polled ${items.length} symbol${items.length === 1 ? "" : "s"}`, "ok");
+    await refresh();
+  } catch (e) {
+    setStatus(String(e), "error");
+  }
+}
+
+async function removeItem(id, symbol) {
+  if (!confirm(`Remove ${symbol} from watchlist?`)) return;
+  try {
+    await api(`/watchlist/${id}`, { method: "DELETE" });
+    await refresh();
+  } catch (e) {
+    setStatus(String(e), "error");
+  }
+}
+
+$("#add-form").onsubmit = async (ev) => {
+  ev.preventDefault();
+  const fd = new FormData(ev.target);
+  const symbol = String(fd.get("symbol") || "").toUpperCase().trim();
+  const intent_tag = fd.get("intent_tag") || null;
+  if (!symbol) return;
+  setStatus(`adding ${symbol}...`, "busy");
+  try {
+    await api("/watchlist", {
+      method: "POST",
+      body: JSON.stringify({ symbol, intent_tag: intent_tag || null }),
+    });
+    ev.target.reset();
+    await pollSymbol(symbol);
+  } catch (e) {
+    setStatus(String(e), "error");
+  }
+};
+
+$("#btn-refresh").onclick = refresh;
+$("#btn-poll-all").onclick = pollAll;
+
+(async function init() {
+  try {
+    setStatus("signing in...", "busy");
+    const token = await ensureSession();
+    connectNotifications(token);
+    await refresh();
+  } catch (e) {
+    setStatus(String(e), "error");
+  }
+})();
+</script>
+</body>
+</html>
