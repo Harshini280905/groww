@@ -1,10 +1,10 @@
 """Unit tests for narrator.py — the only module allowed to call an LLM.
 
-No test in this file hits the real network. `fetch_recent_news` and the
-Anthropic client are mocked so these run offline and deterministically —
-the point being tested is the CONTROL FLOW (when does it call the model,
-when does it fall back, does it ever fabricate a citation), not whether
-yfinance or Anthropic's API happen to be reachable right now.
+No test in this file hits the real network. `fetch_recent_news` and both
+LLM transports are mocked so these run offline and deterministically — the
+point being tested is the CONTROL FLOW (which provider gets picked, when
+does it fall back, does it ever fabricate a citation), not whether yfinance
+or Groq/Anthropic happen to be reachable right now.
 """
 
 from __future__ import annotations
@@ -15,6 +15,8 @@ from unittest.mock import MagicMock, patch
 from app import narrator
 from app.narrator import NewsItem
 
+_NEWS = [NewsItem(title="Headline A", publisher="Reuters", link="http://x")]
+
 
 class HeadlineFallback(unittest.TestCase):
     def test_no_news_returns_no_news_found(self):
@@ -23,105 +25,135 @@ class HeadlineFallback(unittest.TestCase):
         self.assertEqual(result.sources, [])
 
     def test_with_news_cites_top_headline_by_title(self):
-        news = [NewsItem(title="TCS wins large IT deal", publisher="Reuters", link="http://x")]
-        result = narrator._headline_fallback(news)
+        result = narrator._headline_fallback(_NEWS)
         self.assertEqual(result.generated_by, "headline-fallback")
-        self.assertIn("TCS wins large IT deal", result.text)
+        self.assertIn("Headline A", result.text)
         self.assertIn("Reuters", result.text)
 
-    def test_states_plainly_that_no_key_is_configured(self):
-        news = [NewsItem(title="Some headline", publisher="P", link="l")]
-        result = narrator._headline_fallback(news)
-        self.assertIn("No ANTHROPIC_API_KEY", result.text)
+    def test_states_plainly_it_is_not_ai_generated(self):
+        result = narrator._headline_fallback(_NEWS)
+        self.assertIn("not an AI-synthesized", result.text)
 
 
-class NarrateEventWithoutKey(unittest.TestCase):
+class ProviderResolution(unittest.TestCase):
+    @patch.object(narrator, "NARRATOR_PROVIDER", "auto")
+    @patch.object(narrator, "GROQ_API_KEY", None)
     @patch.object(narrator, "ANTHROPIC_API_KEY", None)
+    def test_auto_with_no_keys_resolves_none(self):
+        self.assertEqual(narrator.resolve_provider(), "none")
+
+    @patch.object(narrator, "NARRATOR_PROVIDER", "auto")
+    @patch.object(narrator, "GROQ_API_KEY", "gsk_fake")
+    @patch.object(narrator, "ANTHROPIC_API_KEY", None)
+    def test_auto_prefers_groq_when_its_key_is_set(self):
+        self.assertEqual(narrator.resolve_provider(), "groq")
+
+    @patch.object(narrator, "NARRATOR_PROVIDER", "auto")
+    @patch.object(narrator, "GROQ_API_KEY", "gsk_fake")
+    @patch.object(narrator, "ANTHROPIC_API_KEY", "sk-ant-fake")
+    def test_auto_prefers_groq_over_anthropic_when_both_set(self):
+        # Groq's free tier is the pragmatic default; Anthropic is opt-in.
+        self.assertEqual(narrator.resolve_provider(), "groq")
+
+    @patch.object(narrator, "NARRATOR_PROVIDER", "anthropic")
+    @patch.object(narrator, "GROQ_API_KEY", "gsk_fake")
+    @patch.object(narrator, "ANTHROPIC_API_KEY", "sk-ant-fake")
+    def test_explicit_provider_overrides_auto_detection(self):
+        self.assertEqual(narrator.resolve_provider(), "anthropic")
+
+    @patch.object(narrator, "NARRATOR_PROVIDER", "none")
+    @patch.object(narrator, "GROQ_API_KEY", "gsk_fake")
+    def test_explicit_none_disables_llm_even_with_a_key_present(self):
+        self.assertEqual(narrator.resolve_provider(), "none")
+
+
+class NarrateViaGroq(unittest.TestCase):
+    @patch.object(narrator, "NARRATOR_PROVIDER", "groq")
+    @patch.object(narrator, "GROQ_API_KEY", "gsk_fake")
     @patch.object(narrator, "fetch_recent_news")
-    def test_falls_back_when_no_key_configured(self, mock_fetch):
-        mock_fetch.return_value = [NewsItem(title="Headline A", publisher="P", link="l")]
-        result = narrator.narrate_event("TCS", "up", 5.0, 3.0, 0.9, "verified")
-        self.assertEqual(result.generated_by, "headline-fallback")
-        mock_fetch.assert_called_once_with("TCS")
-
-
-class NarrateEventWithKey(unittest.TestCase):
-    def _fake_response(self, text: str):
-        block = MagicMock()
-        block.type = "text"
-        block.text = text
-        resp = MagicMock()
-        resp.content = [block]
-        return resp
-
-    @patch.object(narrator, "ANTHROPIC_API_KEY", "fake-key-for-test")
-    @patch.object(narrator, "fetch_recent_news")
-    @patch.object(narrator, "anthropic")
-    def test_successful_synthesis_returns_claude_api(self, mock_anthropic_module, mock_fetch):
-        mock_fetch.return_value = [NewsItem(title="Headline A", publisher="P", link="l")]
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = self._fake_response("Synthesized explanation.")
-        mock_anthropic_module.Anthropic.return_value = mock_client
+    @patch.object(narrator, "_synthesize_openai_compatible")
+    def test_successful_groq_synthesis(self, mock_synth, mock_fetch):
+        mock_fetch.return_value = _NEWS
+        mock_synth.return_value = "Groq-synthesized explanation."
 
         result = narrator.narrate_event("TCS", "up", 5.0, 3.0, 0.9, "verified")
 
-        self.assertEqual(result.generated_by, "claude-api")
-        self.assertEqual(result.text, "Synthesized explanation.")
+        self.assertEqual(result.generated_by, "groq-api")
+        self.assertEqual(result.text, "Groq-synthesized explanation.")
+        self.assertEqual(result.model, narrator.GROQ_MODEL)
         self.assertIsNone(result.error)
 
-    @patch.object(narrator, "ANTHROPIC_API_KEY", "fake-key-for-test")
+    @patch.object(narrator, "NARRATOR_PROVIDER", "groq")
+    @patch.object(narrator, "GROQ_API_KEY", "gsk_fake")
     @patch.object(narrator, "fetch_recent_news")
-    @patch.object(narrator, "anthropic")
-    def test_api_failure_degrades_to_headline_fallback(self, mock_anthropic_module, mock_fetch):
-        mock_fetch.return_value = [NewsItem(title="Headline A", publisher="P", link="l")]
-        mock_anthropic_module.Anthropic.side_effect = RuntimeError("network down")
+    @patch.object(narrator, "_synthesize_openai_compatible")
+    def test_groq_failure_degrades_to_headline_fallback(self, mock_synth, mock_fetch):
+        mock_fetch.return_value = _NEWS
+        mock_synth.side_effect = RuntimeError("429 rate limited")
 
         result = narrator.narrate_event("TCS", "up", 5.0, 3.0, 0.9, "verified")
 
         self.assertEqual(result.generated_by, "headline-fallback")
-        self.assertIsNotNone(result.error)
         self.assertIn("RuntimeError", result.error)
 
-    @patch.object(narrator, "ANTHROPIC_API_KEY", "fake-key-for-test")
+    @patch.object(narrator, "NARRATOR_PROVIDER", "groq")
+    @patch.object(narrator, "GROQ_API_KEY", None)
     @patch.object(narrator, "fetch_recent_news")
-    @patch.object(narrator, "anthropic")
-    def test_empty_model_response_degrades_to_fallback(self, mock_anthropic_module, mock_fetch):
-        mock_fetch.return_value = [NewsItem(title="Headline A", publisher="P", link="l")]
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = self._fake_response("")   # empty text
-        mock_anthropic_module.Anthropic.return_value = mock_client
-
+    def test_groq_pinned_but_key_missing_falls_back(self, mock_fetch):
+        mock_fetch.return_value = _NEWS
         result = narrator.narrate_event("TCS", "up", 5.0, 3.0, 0.9, "verified")
-
         self.assertEqual(result.generated_by, "headline-fallback")
         self.assertIsNotNone(result.error)
 
-    @patch.object(narrator, "ANTHROPIC_API_KEY", "fake-key-for-test")
+    @patch.object(narrator, "NARRATOR_PROVIDER", "groq")
+    @patch.object(narrator, "GROQ_API_KEY", "gsk_fake")
+    @patch.object(narrator, "fetch_recent_news")
+    @patch.object(narrator, "_synthesize_openai_compatible")
+    def test_empty_model_response_degrades_to_fallback(self, mock_synth, mock_fetch):
+        mock_fetch.return_value = _NEWS
+        mock_synth.return_value = "   "        # whitespace only
+
+        result = narrator.narrate_event("TCS", "up", 5.0, 3.0, 0.9, "verified")
+        self.assertEqual(result.generated_by, "headline-fallback")
+
+
+class NarrateViaAnthropic(unittest.TestCase):
+    @patch.object(narrator, "NARRATOR_PROVIDER", "anthropic")
+    @patch.object(narrator, "ANTHROPIC_API_KEY", "sk-ant-fake")
+    @patch.object(narrator, "fetch_recent_news")
+    @patch.object(narrator, "_synthesize_anthropic")
+    def test_successful_anthropic_synthesis(self, mock_synth, mock_fetch):
+        mock_fetch.return_value = _NEWS
+        mock_synth.return_value = "Claude-synthesized explanation."
+
+        result = narrator.narrate_event("TCS", "up", 5.0, 3.0, 0.9, "verified")
+
+        self.assertEqual(result.generated_by, "anthropic-api")
+        self.assertEqual(result.model, narrator.ANTHROPIC_MODEL)
+
+
+class NarrateGuards(unittest.TestCase):
+    @patch.object(narrator, "NARRATOR_PROVIDER", "groq")
+    @patch.object(narrator, "GROQ_API_KEY", "gsk_fake")
     @patch.object(narrator, "fetch_recent_news")
     def test_no_news_skips_llm_call_entirely(self, mock_fetch):
         mock_fetch.return_value = []
         result = narrator.narrate_event("TCS", "up", 5.0, 3.0, 0.9, "verified")
         self.assertEqual(result.generated_by, "no-news-found")
 
-    @patch.object(narrator, "ANTHROPIC_API_KEY", "fake-key-for-test")
-    @patch.object(narrator, "fetch_recent_news")
-    @patch.object(narrator, "anthropic")
-    def test_never_states_a_different_number_in_prompt(self, mock_anthropic_module, mock_fetch):
-        """The prompt sent to the model must contain the EXACT confirmed
-        numbers, not a re-derived or rounded-differently version — this is
-        the guard against the model "correcting" a number it was never
-        supposed to touch."""
-        mock_fetch.return_value = [NewsItem(title="Headline A", publisher="P", link="l")]
-        mock_client = MagicMock()
-        mock_client.messages.create.return_value = self._fake_response("ok")
-        mock_anthropic_module.Anthropic.return_value = mock_client
+    def test_prompt_carries_exact_confirmed_numbers(self):
+        """The prompt must contain the EXACT confirmed numbers — this is the
+        guard against a model 'correcting' a number it never should touch."""
+        prompt = narrator._build_user_prompt(
+            "TCS", "down", -6.789, -4.321, "verified", _NEWS
+        )
+        self.assertIn("-6.79%", prompt)     # return_pct, 2dp
+        self.assertIn("-4.32", prompt)      # z_score, 2dp
+        self.assertIn("Headline A", prompt)
 
-        narrator.narrate_event("TCS", "down", -6.789, -4.321, 0.85, "verified")
-
-        call_kwargs = mock_client.messages.create.call_args.kwargs
-        prompt_text = call_kwargs["messages"][0]["content"]
-        self.assertIn("-6.79%", prompt_text)     # return_pct formatted to 2dp
-        self.assertIn("-4.32", prompt_text)      # z_score formatted to 2dp
+    def test_system_prompt_forbids_inventing_a_cause(self):
+        self.assertIn("do not invent a cause", narrator.NARRATOR_SYSTEM_PROMPT)
+        self.assertIn("Never give investment advice", narrator.NARRATOR_SYSTEM_PROMPT)
 
 
 if __name__ == "__main__":

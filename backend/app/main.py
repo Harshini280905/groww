@@ -26,6 +26,7 @@ from fastapi.staticfiles import StaticFiles
 
 from .auth import decode_user_id
 from .db import Base, engine
+from .narrator import resolve_provider
 from .notifications import manager
 from .pipeline import shutdown_reconciler
 from .routers import auth, stocks, watchlist
@@ -81,6 +82,10 @@ def health() -> dict:
         "status": "ok",
         "service": "smart-market-watchlist",
         "scheduler_enabled": SCHEDULER_ENABLED,
+        # Reports the truth about narration config rather than making the
+        # operator guess whether their key was picked up. "none" means the
+        # narrate endpoint will cite real news but skip LLM synthesis.
+        "narrator_provider": resolve_provider(),
     }
 
 

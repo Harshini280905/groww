@@ -95,12 +95,14 @@ All four originally-deferred items are now built and tested:
 `narrator.py` + `POST /api/stocks/{symbol}/events/{id}/narrate` (routers/stocks.py) is the actual implementation of the standing "AI explains, never decides" rule:
 - Only callable against a `SignificantEventRow` that already exists — the endpoint reads confirmed facts from the DB, passes them verbatim into the prompt, and the system prompt explicitly forbids restating a different number.
 - News fetched via `yfinance` — free, real, always attempted regardless of whether an LLM key exists.
-- If `ANTHROPIC_API_KEY` is set: Claude (`claude-haiku-4-5-20251001` by default, overridable via `ANTHROPIC_NARRATOR_MODEL`) synthesizes a 2–3 sentence cited explanation from only the given headlines; told explicitly to say "no clear cause found" rather than invent one.
-- If not set, or on any API failure: falls back to a direct top-headline citation, and the response's `generated_by` field says `"headline-fallback"` — never silently presented as AI-generated.
-- 9 unit tests (`test_narrator.py`), all mocking the network/LLM boundary so they run offline and deterministically; live-verified against a manually-inserted test event with no API key configured — confirmed real news came back, correctly labeled as non-AI.
+- **Provider-agnostic** (`NARRATOR_PROVIDER=auto|groq|anthropic|none`). `auto` prefers Groq when `GROQ_API_KEY` is set, else Anthropic, else headline-only. Groq chosen as the practical default because its free tier needs no credit card — the right call for a hackathon.
+- Groq path goes through a generic OpenAI-compatible transport (`_synthesize_openai_compatible`), so `GROQ_BASE_URL` also works for OpenRouter / Together / local Ollama with zero code change. Anthropic uses its native SDK.
+- On any failure (missing key, 401, rate limit, empty reply): falls back to a direct top-headline citation with `generated_by="headline-fallback"` and the real exception surfaced in `error` — never silently presented as AI-generated.
+- 16 unit tests (`test_narrator.py`), all mocking the network/LLM boundary so they run offline. Live-verified twice: (a) no key → real news cited, correctly labeled non-AI; (b) fake Groq key → genuinely hit `api.groq.com`, got a real 401, degraded gracefully with the error surfaced. `/api/health` reports `narrator_provider` so config is verifiable rather than guessed.
+- One real bug caught by tests here: `"   "` is truthy in Python, so a whitespace-only model reply would have passed as valid narration. Fixed with a defensive `.strip()` at the call site rather than trusting each transport to normalise.
 - Frontend: "Explain this move" button under any diff card's biggest event, shows the `generated_by` badge + cited sources with real links.
 
-**No Anthropic key was embedded anywhere in this codebase** — the user has to supply their own via `ANTHROPIC_API_KEY` if they want real synthesis. This was a hard constraint (an assistant should never provide its own API credentials for someone else's deployed app), not a scope cut.
+**No API key of any provider is embedded anywhere in this codebase** — the user supplies their own. This was a hard constraint (an assistant should never hand over its own API credentials for someone else's deployed app), not a scope cut.
 
 ## Open decisions / next steps
 - Deploy via Render (user-driven — see render.yaml + README "Deploying" section). Blocked on the user creating GitHub + Render accounts; account creation is out of scope for an assistant to do on someone's behalf.
