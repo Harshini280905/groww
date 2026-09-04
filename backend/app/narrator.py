@@ -56,7 +56,13 @@ NARRATOR_PROVIDER = os.getenv("NARRATOR_PROVIDER", "auto").lower()
 
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 GROQ_BASE_URL = os.getenv("GROQ_BASE_URL", "https://api.groq.com/openai/v1")
-GROQ_MODEL = os.getenv("GROQ_NARRATOR_MODEL", "llama-3.3-70b-versatile")
+# Groq rotates its lineup and retires models without much notice —
+# llama-3.3-70b-versatile was the default here and now 404s. If narration
+# starts failing with a 404, list what your key can actually reach:
+#   curl -H "Authorization: Bearer $GROQ_API_KEY" \
+#        https://api.groq.com/openai/v1/models
+# and set GROQ_NARRATOR_MODEL accordingly.
+GROQ_MODEL = os.getenv("GROQ_NARRATOR_MODEL", "openai/gpt-oss-120b")
 
 ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
 ANTHROPIC_MODEL = os.getenv("ANTHROPIC_NARRATOR_MODEL", "claude-haiku-4-5-20251001")
@@ -197,7 +203,10 @@ def _synthesize_openai_compatible(
     """One code path for Groq and every other OpenAI-compatible endpoint.
     Raises on failure; the caller converts that into a graceful fallback."""
     if httpx is None:
-        raise RuntimeError("httpx not installed")
+        raise RuntimeError(
+            "httpx is not installed — the Groq/OpenAI-compatible transport "
+            "needs it. Run: pip install -r requirements.txt"
+        )
     resp = httpx.post(
         f"{base_url.rstrip('/')}/chat/completions",
         headers={

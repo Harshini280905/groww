@@ -156,6 +156,37 @@ class NarrateGuards(unittest.TestCase):
         self.assertIn("Never give investment advice", narrator.NARRATOR_SYSTEM_PROMPT)
 
 
+class DependenciesAreDeclared(unittest.TestCase):
+    """Regression guard for a bug that only appeared in production.
+
+    narrator.py imports httpx directly for the Groq transport, but httpx was
+    never listed in requirements.txt — it arrived transitively via
+    `anthropic`. That held on a dev machine and did NOT hold on a clean
+    Render deploy, where every Groq call failed with "httpx not installed"
+    and silently degraded to the headline fallback. Anything imported
+    directly must be declared directly.
+    """
+
+    def _requirements(self) -> str:
+        from pathlib import Path
+        req = Path(__file__).parent.parent / "requirements.txt"
+        return req.read_text(encoding="utf-8").lower()
+
+    def test_httpx_is_declared(self):
+        self.assertIn("httpx", self._requirements(),
+                      "narrator.py imports httpx directly — it must be in requirements.txt")
+
+    def test_httpx_actually_importable(self):
+        self.assertIsNotNone(
+            narrator.httpx,
+            "httpx failed to import — the Groq narration path cannot work",
+        )
+
+    def test_default_groq_model_is_not_the_retired_one(self):
+        # llama-3.3-70b-versatile was retired by Groq and returns 404.
+        self.assertNotEqual(narrator.GROQ_MODEL, "llama-3.3-70b-versatile")
+
+
 class CitationIntegrity(unittest.TestCase):
     """Regression guard for a real bug found in live testing.
 

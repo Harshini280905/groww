@@ -5,6 +5,11 @@ pydantic>=2.9
 email-validator>=2.0
 apscheduler>=3.10
 aiohttp>=3.10
+# Used DIRECTLY by narrator.py for the OpenAI-compatible (Groq) transport.
+# Was previously relied on transitively via `anthropic`, which held locally
+# but not on a clean deploy — the Groq path failed with "httpx not
+# installed" in production. Declare what you import.
+httpx>=0.27
 curl_cffi>=0.7
 yfinance>=0.2.44
 numpy>=1.26
