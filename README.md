@@ -15,7 +15,7 @@ Most watchlists show a red/green ticker and stop there. This one:
 1. **Diff since your last visit.** A per-user, per-symbol checkpoint (`last_seen_at`) is bumped every time you view the list. Return after 3 days and the card shows a compressed summary of the gap — event count, biggest single move, net drift — not just today's number.
 2. **Volatility-normalized significance.** A move is scored in standard deviations against *that stock's own trailing volatility*, not a fixed percentage. A 2% move on a bluechip and a 2% move on a small-cap trigger different responses automatically. Defensible answer to "why 3%?" — because there is no arbitrary 3%.
 3. **Multi-source reconciliation with a confidence score.** Three genuinely independent sources (Yahoo Finance, NSE India, BSE India) are fanned out concurrently, resolved via **median** (robust to one broken source), and gated by a decomposed confidence score (`coverage` + `agreement` + `freshness`). A single-source quote can never be labeled `VERIFIED` — the invariant is enforced in code (see `market_data.py::tier_for`).
-4. **AI is walled off from ground truth.** No LLM ever decides a price or a significance verdict. Detection is deterministic, auditable, reproducible. An LLM explainer layer (roadmap) would only narrate events *after* the statistics layer has already confirmed them, always cited.
+4. **AI is walled off from ground truth — and now actually built.** No LLM ever decides a price or a significance verdict; that stays fully deterministic. `POST /api/stocks/{symbol}/events/{id}/narrate` calls an LLM *only* to explain an event that's already confirmed and persisted — it fetches real news via yfinance, and if `ANTHROPIC_API_KEY` is set, asks Claude to synthesize a short cited explanation from those headlines (with an explicit instruction to say "no clear cause found" rather than invent one). Without a key, it still returns a real, cited headline — just labeled honestly as `headline-fallback`, not pretending to be AI-generated. See [backend/app/narrator.py](backend/app/narrator.py).
 5. **A real background poller, not just a demo button.** APScheduler runs the identical pipeline (`pipeline.poll_and_detect`) on a 10-minute interval, gated to NSE trading hours (09:15–15:30 IST, Mon–Fri) — near-zero ingestion cost outside market hours, and cost bounded by *distinct symbols watched*, not by user count.
 6. **Live push notifications, not just a page you have to refresh.** A confirmed significant event fans out over WebSocket to every watcher of that symbol, tagged with a priority (P0 immediate / P1 batched / P2 digest) derived from the event's z-score and the watcher's own intent tag.
 7. **Real JWT auth, cross-device by construction.** Every watchlist row is scoped to a signed-in user via a real bcrypt-free (pbkdf2_sha256) password hash + JWT — not a hardcoded demo user id. A `demo-login` convenience route removes signup friction for judges without being a security bypass: it issues a token through the exact same code path as a real login.
@@ -46,6 +46,8 @@ Optional environment variables (see [backend/.env.example](backend/.env.example)
 | `SCHEDULER_ENABLED` | `1` | Background poller (§07). Set `0` to rely only on the manual dev trigger. |
 | `POLL_INTERVAL_MINUTES` | `10` | How often the scheduler polls, during market hours only. |
 | `DEV_ROUTES` | `1` | Exposes `/api/dev/*` manual-trigger endpoints. Set `0` for a hardened deploy. |
+| `ANTHROPIC_API_KEY` | unset | Optional. Enables real LLM synthesis in the event narrator. Without it, narration still works and still cites real news — it just says so plainly instead of pretending. |
+| `ANTHROPIC_NARRATOR_MODEL` | `claude-haiku-4-5-20251001` | Which Claude model narrates events, if a key is set. |
 
 ### First-run walkthrough
 
@@ -61,7 +63,7 @@ Optional environment variables (see [backend/.env.example](backend/.env.example)
 ```bash
 cd backend
 python smoke.py                          # live multi-source fetch, no server needed
-python -m unittest discover -s tests     # 73 unit tests
+python -m unittest discover -s tests     # 82 unit tests
 ```
 
 ---
@@ -75,6 +77,7 @@ python -m unittest discover -s tests     # 73 unit tests
 | [backend/app/pipeline.py](backend/app/pipeline.py) | The shared poll → reconcile → detect → persist → notify cycle. One code path for both the manual dev trigger and the scheduler — no drift between what the demo button does and what the real poller does. |
 | [backend/app/scheduler.py](backend/app/scheduler.py) | APScheduler background poller. `market_is_open()` is pure and unit-tested directly. |
 | [backend/app/notifications.py](backend/app/notifications.py) | §08 fanout: DB-backed reverse index (symbol → watchers), priority classification, per-user WebSocket `ConnectionManager`. |
+| [backend/app/narrator.py](backend/app/narrator.py) | §11 AI boundary in code: fetches real news (yfinance, free), optionally calls Claude to synthesize a cited explanation of an *already-confirmed* event. Every response states `generated_by` so the UI never presents a headline lookup as if it were AI-generated. |
 | [backend/app/auth.py](backend/app/auth.py) + [routers/auth.py](backend/app/routers/auth.py) | JWT issuance/verification, password hashing, register/login/demo-login. |
 | [backend/app/sources/](backend/app/sources/) | Three source adapters: `yahoo.py`, `nse.py`, `bse.py`. All share the `MarketSource` protocol. Adapters never raise. |
 | [backend/app/routers/](backend/app/routers/) | `watchlist.py` (diff engine, auth-scoped, bumps `last_seen_at`), `stocks.py` (per-symbol drill-down, unauthenticated — shared data), `dev.py` (manual pipeline trigger). |
@@ -97,8 +100,9 @@ python -m unittest discover -s tests     # 73 unit tests
 - **APScheduler background poller** — market-hours-gated, 10-minute interval, same pipeline as the manual trigger
 - **Live WebSocket notifications** — priority-tagged (P0/P1/P2), reverse-indexed by symbol, delivered to every open session for a user
 - **Real JWT authentication** — register/login/demo-login, pbkdf2-hashed passwords, every watchlist row scoped to `current_user`, not a hardcoded id
-- 73 passing unit tests
-- Frontend UI with diff cards, tier chips, source-readings drill-down, live toast notifications
+- **AI event narrator** — real news fetch (yfinance, free, always on) + optional Claude synthesis (`ANTHROPIC_API_KEY`), only ever explaining an already-confirmed event, never deciding one; honestly labels which path produced the text
+- 82 passing unit tests
+- Frontend UI with diff cards, tier chips, source-readings drill-down, live toast notifications, "Explain this move" narration panel
 - Render deployment config ([render.yaml](render.yaml)) — one click after connecting the repo
 
 **Documented but not built for the 72-hour scope:**

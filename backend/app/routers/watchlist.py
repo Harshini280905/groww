@@ -78,6 +78,7 @@ def _diff_summary(db: Session, item: WatchlistItem) -> DiffSummaryOut:
         event_count=len(events),
         net_drift_pct=round(net_drift, 2),
         biggest_event=BiggestEventOut(
+            id=biggest.id,
             ts=_ensure_tz(biggest.ts),
             z_score=round(biggest.z_score, 2),
             return_pct=round(biggest_return, 2),

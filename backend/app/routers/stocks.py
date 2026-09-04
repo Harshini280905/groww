@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -9,7 +10,8 @@ from sqlalchemy.orm import Session
 
 from ..db import get_db
 from ..models import PriceTick, SignificantEventRow, SourceReadingRow
-from ..schemas import SignificantEventOut, SourceReadingOut, StockLatestOut
+from ..narrator import narrate_event
+from ..schemas import NarrationOut, NewsItemOut, SignificantEventOut, SourceReadingOut, StockLatestOut
 
 router = APIRouter()
 
@@ -58,3 +60,49 @@ def source_readings(symbol: str, limit: int = 20, db: Session = Depends(get_db))
         .all()
     )
     return rows
+
+
+@router.post("/{symbol}/events/{event_id}/narrate", response_model=NarrationOut)
+async def narrate_event_endpoint(symbol: str, event_id: int, db: Session = Depends(get_db)):
+    """§11 AI boundary in practice: this endpoint ONLY reads a
+    SignificantEventRow that already exists — the price, direction, and
+    z-score it passes to the narrator are the confirmed facts from the
+    deterministic pipeline. The narrator cannot alter them; it can only
+    explain them, cited, or say plainly that it has nothing to cite.
+    """
+    row = (
+        db.query(SignificantEventRow)
+        .filter_by(id=event_id, symbol=symbol.upper())
+        .first()
+    )
+    if row is None:
+        raise HTTPException(status_code=404, detail="Significant event not found")
+
+    return_pct = (
+        (row.price_after - row.price_before) / row.price_before * 100
+        if row.price_before > 0 else 0.0
+    )
+
+    # narrate_event does blocking I/O (yfinance + optionally the Anthropic
+    # API) — run it off the event loop so one slow narration can't stall
+    # every other request this process is handling.
+    result = await asyncio.to_thread(
+        narrate_event,
+        symbol=row.symbol,
+        direction=row.direction,
+        return_pct=return_pct,
+        z_score=row.z_score,
+        confidence=row.confidence,
+        tier="verified" if row.confidence >= 0.80 else "best_available",
+    )
+
+    return NarrationOut(
+        text=result.text,
+        generated_by=result.generated_by,
+        sources=[
+            NewsItemOut(title=s.title, publisher=s.publisher, link=s.link, published_at=s.published_at)
+            for s in result.sources
+        ],
+        model=result.model,
+        error=result.error,
+    )

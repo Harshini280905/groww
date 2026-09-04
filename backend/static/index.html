@@ -277,6 +277,31 @@
   details.drill .readings .val { color: var(--ink-soft); text-align: right; }
   details.drill .readings .err { color: var(--down); font-size: 10.5px; }
 
+  .narration-box {
+    margin-top: 8px;
+    background: var(--bg);
+    border: 1px solid var(--line-strong);
+    border-radius: 6px;
+    padding: 10px 12px;
+    font-size: 12.5px;
+  }
+  .narration-badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: var(--mono-chip, #5A4A9C);
+    background: var(--accent-soft);
+    padding: 2px 8px;
+    border-radius: 100px;
+    margin-bottom: 6px;
+  }
+  .narration-text { color: var(--ink); line-height: 1.5; }
+  .narration-sources { margin-top: 6px; font-size: 11.5px; color: var(--ink-faint); }
+  .narration-sources a { color: var(--accent); }
+  .narration-error { margin-top: 6px; font-family: var(--mono); font-size: 10.5px; color: var(--down); }
+
   .empty {
     text-align: center;
     padding: 60px 20px;
@@ -481,6 +506,37 @@ function fmtINR(v) {
   return "₹" + v.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
+const GENERATED_BY_LABEL = {
+  "claude-api": "AI-synthesized (Claude), cited below",
+  "headline-fallback": "headline lookup only — no AI key configured",
+  "no-news-found": "no news found — nothing to explain from",
+};
+
+async function explainEvent(symbol, eventId, container) {
+  container.textContent = "asking the narrator...";
+  try {
+    const r = await api(`/stocks/${symbol}/events/${eventId}/narrate`, { method: "POST" });
+    container.innerHTML = "";
+    container.append(
+      el("div", { className: "narration-badge" }, GENERATED_BY_LABEL[r.generated_by] || r.generated_by),
+      el("div", { className: "narration-text" }, r.text),
+    );
+    if (r.sources && r.sources.length) {
+      const srcList = el("div", { className: "narration-sources" });
+      for (const s of r.sources) {
+        const a = el("a", { href: s.link, target: "_blank", rel: "noopener" }, s.title);
+        srcList.append(el("div", {}, "· ", a, ` (${s.publisher})`));
+      }
+      container.append(srcList);
+    }
+    if (r.error) {
+      container.append(el("div", { className: "narration-error" }, `note: ${r.error}`));
+    }
+  } catch (e) {
+    container.textContent = "explain failed: " + String(e);
+  }
+}
+
 function renderDiff(item) {
   const wrap = el("div", { className: "diff" + (item.status === "significant_change" ? " significant" : "") });
   const title = el("div", { className: "diff-title" });
@@ -505,6 +561,18 @@ function renderDiff(item) {
   }
   wrap.append(title, body);
   if (detail.textContent) wrap.append(detail);
+
+  if (item.biggest_event) {
+    const explainBtn = el("button", { className: "btn secondary tiny", style: "margin-top:8px" }, "Explain this move");
+    const resultBox = el("div", { className: "narration-box", hidden: true });
+    explainBtn.onclick = () => {
+      resultBox.hidden = false;
+      explainBtn.disabled = true;
+      explainEvent(item.symbol, item.biggest_event.id, resultBox).finally(() => { explainBtn.disabled = false; });
+    };
+    wrap.append(explainBtn, resultBox);
+  }
+
   return wrap;
 }
 

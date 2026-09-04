@@ -20,6 +20,7 @@ class WatchlistItemCreate(BaseModel):
 
 class BiggestEventOut(BaseModel):
     """The most-notable event within a diff window — one per diff summary."""
+    id: int
     ts: datetime
     z_score: float
     return_pct: float
@@ -85,6 +86,31 @@ class SourceReadingOut(BaseModel):
     volume: Optional[float] = None
     fetched_at: datetime
     latency_ms: float
+    error: Optional[str] = None
+
+
+class NewsItemOut(BaseModel):
+    title: str
+    publisher: str
+    link: str
+    published_at: Optional[str] = None
+
+
+class NarrationOut(BaseModel):
+    """Response of POST /stocks/{symbol}/events/{event_id}/narrate.
+
+    `generated_by` tells the truth about how `text` was produced:
+      "claude-api"        — actually synthesized by an LLM from cited headlines
+      "headline-fallback" — no ANTHROPIC_API_KEY configured; direct headline lookup
+      "no-news-found"     — nothing to cite, nothing synthesized
+    A UI must surface this field, not just `text` — presenting a headline
+    lookup as if it were AI-generated would violate the §11 boundary this
+    module exists to enforce.
+    """
+    text: str
+    generated_by: str
+    sources: list[NewsItemOut] = []
+    model: Optional[str] = None
     error: Optional[str] = None
 
 

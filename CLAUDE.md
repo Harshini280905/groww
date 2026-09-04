@@ -90,8 +90,21 @@ All four originally-deferred items are now built and tested:
 - 73 unit tests total (up from 46): `test_auth.py`, `test_scheduler.py`, `test_notifications.py` added.
 - `render.yaml` + `.env.example` — deployment-ready config for Render's free tier. Actual account creation/deployment click-through was left to the user (creating third-party accounts on someone's behalf is out of scope for an assistant, regardless of convenience).
 
+## AI narrator — built (§11 boundary made concrete)
+
+`narrator.py` + `POST /api/stocks/{symbol}/events/{id}/narrate` (routers/stocks.py) is the actual implementation of the standing "AI explains, never decides" rule:
+- Only callable against a `SignificantEventRow` that already exists — the endpoint reads confirmed facts from the DB, passes them verbatim into the prompt, and the system prompt explicitly forbids restating a different number.
+- News fetched via `yfinance` — free, real, always attempted regardless of whether an LLM key exists.
+- If `ANTHROPIC_API_KEY` is set: Claude (`claude-haiku-4-5-20251001` by default, overridable via `ANTHROPIC_NARRATOR_MODEL`) synthesizes a 2–3 sentence cited explanation from only the given headlines; told explicitly to say "no clear cause found" rather than invent one.
+- If not set, or on any API failure: falls back to a direct top-headline citation, and the response's `generated_by` field says `"headline-fallback"` — never silently presented as AI-generated.
+- 9 unit tests (`test_narrator.py`), all mocking the network/LLM boundary so they run offline and deterministically; live-verified against a manually-inserted test event with no API key configured — confirmed real news came back, correctly labeled as non-AI.
+- Frontend: "Explain this move" button under any diff card's biggest event, shows the `generated_by` badge + cited sources with real links.
+
+**No Anthropic key was embedded anywhere in this codebase** — the user has to supply their own via `ANTHROPIC_API_KEY` if they want real synthesis. This was a hard constraint (an assistant should never provide its own API credentials for someone else's deployed app), not a scope cut.
+
 ## Open decisions / next steps
-- Deploy via Render (user-driven — see render.yaml + README "Deploying" section).
+- Deploy via Render (user-driven — see render.yaml + README "Deploying" section). Blocked on the user creating GitHub + Render accounts; account creation is out of scope for an assistant to do on someone's behalf.
+- If the user adds an `ANTHROPIC_API_KEY`, verify the real (non-mocked) synthesis path live before the final pitch — the mocked tests prove control flow, not that a real API call actually round-trips correctly with a live key.
 - Consider a Twelve Data plan upgrade for a genuine 3rd always-live NSE source, if NSE's bot detection remains unbeatable and the budget allows.
 - Redis-backed notification coalescing (real time-window batching) — documented production upgrade, not built.
 - Optional stretch (not committed): intent-tagged significance thresholds beyond notification priority (currently `own_it` only affects notification priority, not the significance z-score threshold itself); triage-inbox UX framing instead of a card grid.
