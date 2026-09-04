@@ -122,10 +122,38 @@ python -m unittest discover -s tests     # 91 unit tests
 - **Catalog covers 40 major NSE stocks.** Only instruments with a verified BSE scrip code are included — inventing codes would produce symbols that autocomplete happily then fail to fetch. Production would seed the full list from BSE's own securities endpoint.
 - **Indian equities only.** Global tickers (`AAPL`, `SAP`) won't resolve, and the app now says so explicitly rather than showing a blank card.
 - **SQLite on Render's free tier is ephemeral.** Data resets on redeploy or after idle spin-down. Point `DATABASE_URL` at Postgres for real persistence — no code changes needed.
-- **No load-test.** I didn't stress-test concurrency in 72 hours. The architecture has no scaling cliff in it (ingestion bounded by symbol count, reads cache-shaped, API tier stateless), but I haven't proven it under load and won't claim otherwise.
+- **Load testing found a real bottleneck — see the section below.** It's been measured and partly fixed, not hand-waved.
 - **Notification coalescing is simplified.** Priority tagging and reverse-index fanout are real; time-window batching is documented, not built.
 
 ---
+
+## Load testing — and the bottleneck it found
+
+`loadtest.py` hammers `GET /api/watchlist` (the endpoint whose cost actually grows with users) against a locally-seeded database. External market APIs are never called, so the numbers measure *this* system rather than yfinance's latency.
+
+**The finding.** Throughput flatlined at ~47 rps regardless of concurrency while latency grew linearly — the signature of requests serializing behind a single resource:
+
+| Concurrent users | rps | p50 | p99 |
+|---:|---:|---:|---:|
+| 1 | 47 | 21 ms | 26 ms |
+| 5 | 47 | 101 ms | 155 ms |
+| 10 | 45 | 209 ms | 455 ms |
+| 25 | 12 | 458 ms | **30,719 ms** |
+| 50 | — | — | **collapsed, 1000 errors** |
+
+**The controlled experiment.** `loadtest_readonly.py` hits a purely read-only endpoint on the same server and database. It sustained **170–197 rps and survived 50 concurrent users with zero errors** — isolating the cause to the write, not the framework or the machine.
+
+**The cause.** `GET /api/watchlist` performed a *write* on every read: it advanced each item's `last_seen_at` checkpoint. SQLite serializes writers, so every read queued behind a write lock. I had assumed this was negligible; it was the single biggest constraint in the system.
+
+**The fix** is semantic rather than a trick. `last_seen_at` records what the user has *seen* — so if a view surfaced nothing, there is nothing to acknowledge and the checkpoint can stay put. The next genuine event still lands after it either way, so the diff a user sees is unchanged. Since ~91% of views surface no events (measured independently by `prove_detection.py`), this removes the write from the overwhelming majority of requests.
+
+| At 10 concurrent users | Before | After |
+|---|---:|---:|
+| Throughput | 44.8 rps | **92.2 rps** |
+| p50 | 209 ms | **104 ms** |
+| p99 | 455 ms | **155 ms** |
+
+**What I have NOT proven:** that the ceiling is gone at 25+ users. That run timed out before producing a clean number, and I'm not going to claim a result I didn't measure. The writes that *do* happen still serialize on SQLite, so a ceiling certainly remains — just a higher one. The real production answer is Postgres (already supported via `DATABASE_URL`, no code change), which has proper concurrent writers.
 
 ## Two bugs worth mentioning
 
