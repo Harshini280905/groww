@@ -10,7 +10,7 @@ from sqlalchemy.orm import Session
 
 from ..catalog import search as catalog_search
 from ..db import get_db
-from ..models import PriceTick, SignificantEventRow, SourceReadingRow
+from ..models import DailyBar, PriceTick, SignificantEventRow, SourceReadingRow
 from ..narrator import narrate_event
 from ..schemas import (
     InstrumentOut, NarrationOut, NewsItemOut, SignificantEventOut,
@@ -80,6 +80,61 @@ def source_readings(symbol: str, limit: int = 20, db: Session = Depends(get_db))
         .all()
     )
     return rows
+
+
+@router.post("/{symbol}/narrate-today", response_model=NarrationOut)
+async def narrate_today(symbol: str, db: Session = Depends(get_db)):
+    """Explain today's move for a symbol, significant or not.
+
+    Why this exists: significance requires |z| >= 2, which is genuinely rare
+    (~5% of trading days per stock). Gating narration behind a confirmed
+    SignificantEvent meant that on an ordinary day the feature was
+    completely invisible — the most useful thing the app does had no
+    discoverable entry point.
+
+    This does NOT weaken the §11 boundary. The model still only ever
+    explains numbers the deterministic pipeline already produced and
+    persisted (PriceTick + the last stored DailyBar); it cannot create,
+    alter, or decide anything. "AI explains, never decides" was never the
+    same rule as "AI only explains dramatic things".
+    """
+    symbol = symbol.upper()
+    tick = db.query(PriceTick).filter_by(symbol=symbol).first()
+    if tick is None or tick.price <= 0:
+        raise HTTPException(status_code=404, detail=f"No confirmed price for {symbol} yet")
+
+    bar = (
+        db.query(DailyBar)
+        .filter_by(symbol=symbol)
+        .order_by(DailyBar.date.desc())
+        .first()
+    )
+    if bar is None or bar.close <= 0:
+        raise HTTPException(status_code=404, detail="No price history to compare against yet")
+
+    return_pct = (tick.price - bar.close) / bar.close * 100
+    direction = "up" if return_pct >= 0 else "down"
+
+    result = await asyncio.to_thread(
+        narrate_event,
+        symbol=symbol,
+        direction=direction,
+        return_pct=return_pct,
+        z_score=None,         # not a significance claim — this is today's raw move
+        confidence=tick.confidence,
+        tier=tick.tier,
+    )
+    return NarrationOut(
+        text=result.text,
+        generated_by=result.generated_by,
+        sources=[
+            NewsItemOut(title=s.title, publisher=s.publisher, link=s.link,
+                        published_at=s.published_at)
+            for s in result.sources
+        ],
+        model=result.model,
+        error=result.error,
+    )
 
 
 @router.post("/{symbol}/events/{event_id}/narrate", response_model=NarrationOut)

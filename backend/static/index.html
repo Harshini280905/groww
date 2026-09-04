@@ -632,12 +632,25 @@ function diffPanel(item) {
       `biggest: ${e.return_pct >= 0 ? "+" : ""}${e.return_pct.toFixed(2)}% · ` +
       `${Math.abs(e.z_score).toFixed(1)}× this stock's normal daily move · ` +
       new Date(e.ts).toLocaleString()));
+  }
 
-    const btn = el("button", { className: "btn ghost tiny", style: "margin-top:9px" }, "Why did this happen?");
+  // The explain button is ALWAYS available when there's a confirmed price —
+  // not only on the rare days something unusual happens. Gating it behind a
+  // significant event (|z| >= 2, roughly 5% of trading days) meant the
+  // feature was invisible almost all the time. If there's a confirmed event
+  // we explain that; otherwise we explain today's ordinary move, and the
+  // model is explicitly told it is NOT unusual.
+  if (item.current_price != null) {
+    const hasEvent = !!item.biggest_event;
+    const btn = el("button", { className: "btn ghost tiny", style: "margin-top:9px" },
+      hasEvent ? "Why did this happen?" : "Why is it at this price?");
     const box = el("div", { className: "narration", hidden: true });
     btn.onclick = () => {
       box.hidden = false; btn.disabled = true;
-      explain(item.symbol, e.id, box).finally(() => btn.disabled = false);
+      const run = hasEvent
+        ? explain(`/stocks/${item.symbol}/events/${item.biggest_event.id}/narrate`, box)
+        : explain(`/stocks/${item.symbol}/narrate-today`, box);
+      run.finally(() => btn.disabled = false);
     };
     p.append(btn, box);
   }
@@ -651,10 +664,10 @@ const GEN_BY = {
   "no-news-found": "No recent news found",
 };
 
-async function explain(symbol, eventId, box) {
+async function explain(path, box) {
   box.textContent = "looking for news…";
   try {
-    const r = await api(`/stocks/${symbol}/events/${eventId}/narrate`, { method: "POST" });
+    const r = await api(path, { method: "POST" });
     box.innerHTML = "";
     box.append(
       el("div", { className: "n-badge" }, GEN_BY[r.generated_by] || r.generated_by),

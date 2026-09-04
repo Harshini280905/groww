@@ -165,14 +165,26 @@ def _headline_fallback(news: list[NewsItem], reason: str = "no LLM provider conf
 # ─────────────────────────────────────────────────────────────────────────────
 
 def _build_user_prompt(
-    symbol: str, direction: str, return_pct: float, z_score: float, tier: str,
+    symbol: str, direction: str, return_pct: float, z_score: Optional[float], tier: str,
     news: list[NewsItem],
 ) -> str:
     headlines_block = "\n".join(f'- "{n.title}" ({n.publisher}) {n.link}' for n in news)
+    # z_score is None when explaining an ordinary day's move rather than a
+    # confirmed significant event. Emitting "z=+0.00" there would invite the
+    # model to describe a normal move as statistically notable — so the line
+    # is omitted entirely, and the model is told the move is within range.
+    if z_score is None:
+        significance_line = (
+            "Statistical significance: none — this is a routine daily move, "
+            "NOT flagged as unusual. Do not describe it as significant, "
+            "dramatic, or a spike.\n"
+        )
+    else:
+        significance_line = f"Statistical significance: z={z_score:+.2f}\n"
     return (
         f"Symbol: {symbol}\n"
         f"Confirmed move: {direction} {return_pct:+.2f}%\n"
-        f"Statistical significance: z={z_score:+.2f}\n"
+        f"{significance_line}"
         f"Data confidence tier: {tier}\n\n"
         f"Recent headlines:\n{headlines_block}\n\n"
         f"Explain this move using only the above."
@@ -244,7 +256,7 @@ def narrate_event(
     symbol: str,
     direction: str,
     return_pct: float,
-    z_score: float,
+    z_score: Optional[float],
     confidence: float,
     tier: str,
 ) -> Narration:
