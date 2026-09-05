@@ -67,8 +67,10 @@ Optional config (see [backend/.env.example](backend/.env.example)) — a gitigno
 
 ```bash
 cd backend
+python -m unittest discover -s tests     # 99 unit tests
+python chaostest.py                      # 18 fault-injection invariants
+python prove_detection.py                # replays real market history through the detector
 python smoke.py                          # live multi-source fetch, no server needed
-python -m unittest discover -s tests     # 91 unit tests
 ```
 
 ---
@@ -106,7 +108,7 @@ python -m unittest discover -s tests     # 91 unit tests
 - AI event narrator — provider-agnostic, cited, honestly labelled
 - Searchable instrument catalog with ranked typeahead
 - Full frontend: dark/light themes, profile menu, labelled prices, onboarding legend
-- 91 passing unit tests
+- 99 passing unit tests, plus 18 chaos-testing invariants and a historical-replay proof of the detector
 - Deployed on Render via [render.yaml](render.yaml)
 
 **Documented but not built (72-hour scope):**
@@ -153,7 +155,35 @@ python -m unittest discover -s tests     # 91 unit tests
 | p50 | 209 ms | **104 ms** |
 | p99 | 455 ms | **155 ms** |
 
-**What I have NOT proven:** that the ceiling is gone at 25+ users. That run timed out before producing a clean number, and I'm not going to claim a result I didn't measure. The writes that *do* happen still serialize on SQLite, so a ceiling certainly remains — just a higher one. The real production answer is Postgres (already supported via `DATABASE_URL`, no code change), which has proper concurrent writers.
+**What I have NOT proven, and why.** I retried 25+ users repeatedly and could not get a clean number. The server process dies:
+
+```
+OSError: [WinError 64] The specified network name is no longer available
+ERROR asyncio: Accept failed on a socket
+```
+
+That's asyncio's ProactorEventLoop on **Windows**, not the application: slow responses cause client-side timeouts, abrupt disconnects kill the accept loop, and every subsequent connection then fails outright. So the "collapse at 25 users" is a cascade — the write bottleneck triggers it, but the total failure is a Windows socket-handling limitation of the test environment.
+
+I can't separate application limit from platform limit without running this on Linux, so I'm not claiming a figure for 25+. The 1–10 user numbers above are clean and reproducible; beyond that, the honest answer is "not measured on representative infrastructure." Writes that do still happen serialize on SQLite regardless, so a ceiling certainly remains — Postgres (already supported via `DATABASE_URL`, no code change) is the real answer.
+
+## Chaos testing
+
+`chaostest.py` injects faults at the boundary where reality is actually unreliable, driving the **real** reconciler and detector with deliberately broken adapters. One invariant is under test throughout: *never present a fabricated or unverified price as fact.* Degrading honestly passes; crashing fails; silently inventing a number is the worst outcome and is what most scenarios hunt for.
+
+| # | Fault injected | Required behaviour |
+|---|---|---|
+| 1 | Every source down | No price invented, `unconfirmed`, no event can fire |
+| 2 | Only one source answers | Price served but **never** `verified` |
+| 3 | Adapter raises (contract violation) | Contained; survivors still resolve |
+| 4 | Adapter hangs forever | Healthy sources not blocked |
+| 5 | Source reports a wildly wrong price | Median resists it; disagreement shows in confidence |
+| 6 | Sources answer with hours-old data | Freshness collapses; can't reach `verified` |
+| 7 | Repeated failures | Breaker opens, stops hammering the dead source |
+| 8 | Source recovers | Breaker half-opens and re-admits it |
+| 9 | Negative / zero prices | Rejected; counted against coverage |
+| 10 | NaN and inf in price history | Detector survives |
+
+**18/18 invariants hold** — but only after chaos testing found a real bug. Scenario 4 originally failed: the reconciler defended against adapters that *raise* but not against one that *hangs*, because `asyncio.gather` waits for everything. Real adapters set their own timeouts so it was masked in production, but the reconciler was trusting adapters to be well-behaved about time — an assumption it already, correctly, refuses to make about exceptions. It now enforces its own per-source deadline.
 
 ## Two bugs worth mentioning
 

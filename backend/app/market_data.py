@@ -302,6 +302,16 @@ class Reconciler:
         never given the chance to raise.
     """
 
+    # Hard per-source deadline enforced by the RECONCILER, independent of
+    # whatever timeout an adapter sets for itself. Adapters are expected to
+    # bound their own I/O, but this class already refuses to trust them not
+    # to raise — trusting them not to HANG was an inconsistency that chaos
+    # testing caught: a single unresponsive source stalled the whole fan-out
+    # even though every other source had already answered. Slightly above a
+    # typical adapter timeout (8-10s) so this only fires when an adapter has
+    # failed to honour its own.
+    PER_SOURCE_TIMEOUT_S = 12.0
+
     def __init__(self, sources: list[MarketSource]) -> None:
         if not sources:
             raise ValueError("Reconciler needs at least one source.")
@@ -319,7 +329,24 @@ class Reconciler:
                 error="circuit_open",
             )
         try:
-            reading = await source.fetch(symbol)
+            # The reconciler enforces its own deadline. An adapter that hangs
+            # must not be able to stall sources that have already answered.
+            reading = await asyncio.wait_for(
+                source.fetch(symbol), timeout=self.PER_SOURCE_TIMEOUT_S
+            )
+        except asyncio.TimeoutError:
+            log.warning(
+                "Adapter %s exceeded the reconciler deadline on %s", source.name, symbol
+            )
+            reading = SourceReading(
+                source=source.name,
+                symbol=symbol,
+                price=0.0,
+                volume=None,
+                fetched_at=datetime.now(timezone.utc),
+                latency_ms=self.PER_SOURCE_TIMEOUT_S * 1000,
+                error="reconciler_timeout",
+            )
         except Exception as e:
             # Belt-and-suspenders — adapters SHOULD swallow their own errors.
             log.exception("Adapter %s leaked an exception on %s", source.name, symbol)

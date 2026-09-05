@@ -13,9 +13,9 @@ __pycache__/
 backend/watchlist.db
 backend/watchlist.db-shm
 backend/watchlist.db-wal
-backend/loadtest.db
-backend/loadtest.db-shm
-backend/loadtest.db-wal
+backend/*.db
+backend/*.db-shm
+backend/*.db-wal
 
 # Editors / OS
 .vscode/
